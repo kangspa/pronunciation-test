@@ -114,6 +114,34 @@ async function decodeTo16k(blob: Blob): Promise<Float32Array> {
 
 const FRAME = SAMPLE_RATE / 50; // 20 ms
 
+// Normalised autocorrelation peak for voice pitch (60–800 Hz). Voiced speech
+// and singing score well above 0.5; broadband noise stays near 0.
+// Runs at 8 kHz (every other sample) to keep the cost low on long takes.
+const PERIODIC = 0.5;
+const WINDOW = 320; // 40 ms at 16 kHz
+const MIN_LAG = Math.floor(SAMPLE_RATE / 800);
+const MAX_LAG = Math.ceil(SAMPLE_RATE / 60);
+
+function periodicity(x: Float32Array, start: number): number {
+  if (start + WINDOW + MAX_LAG > x.length) return 0;
+  let best = 0;
+  for (let lag = MIN_LAG; lag <= MAX_LAG; lag += 2) {
+    let xy = 0;
+    let xx = 0;
+    let yy = 0;
+    for (let i = 0; i < WINDOW; i += 2) {
+      const a = x[start + i];
+      const b = x[start + i + lag];
+      xy += a * b;
+      xx += a * a;
+      yy += b * b;
+    }
+    const r = xx > 0 && yy > 0 ? xy / Math.sqrt(xx * yy) : 0;
+    if (r > best) best = r;
+  }
+  return best;
+}
+
 // Trims leading/trailing silence and peak-normalises. Returns null when there
 // is no clear voice, because Whisper hallucinates text ("MBC 뉴스…") on silence.
 export function prepareSpeech(samples: Float32Array): Float32Array | null {
@@ -133,11 +161,13 @@ export function prepareSpeech(samples: Float32Array): Float32Array | null {
   // and 3x of it would reject everything.
   const threshold = Math.max(0.01, Math.min(noiseFloor * 3, loud * 0.25));
 
+  // Energy alone can't separate a held note from steady background noise
+  // (both are flat over time), so a frame also has to be periodic.
   let first = -1;
   let last = -1;
   let voiced = 0;
   for (let f = 0; f < frames; f++) {
-    if (rms[f] > threshold) {
+    if (rms[f] > threshold && periodicity(samples, f * FRAME) > PERIODIC) {
       voiced++;
       if (first < 0) first = f;
       last = f;
