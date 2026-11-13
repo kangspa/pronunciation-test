@@ -1,6 +1,10 @@
 /// <reference lib="webworker" />
 import { AutoProcessor, WhisperForConditionalGeneration, env } from '@huggingface/transformers';
 import type { Processor } from '@huggingface/transformers';
+import { pitchRunner, stemRunner } from '../audio/audioSessions';
+import { PITCH_RATE, trackPitch } from '../audio/pitch';
+import { resample } from '../audio/resample';
+import { SEPARATION_RATE, separateVocals } from '../audio/separation';
 import { WhisperScorer } from './whisperScorer';
 import type { FileProgress, WorkerRequest, WorkerResponse } from './protocol';
 
@@ -77,22 +81,73 @@ async function load(req: Extract<WorkerRequest, { type: 'load' }>) {
   }
 }
 
-async function score(req: Extract<WorkerRequest, { type: 'score' }>) {
+type RequestOf<T extends WorkerRequest['type']> = Extract<WorkerRequest, { type: T }>;
+
+function requireWhisper() {
+  if (!scorer || !processor) throw new Error('음성 인식 모델이 아직 로드되지 않았어요.');
+  return { scorer, processor };
+}
+
+async function score(req: RequestOf<'score'>) {
+  const { scorer, processor } = requireWhisper();
+  const { input_features } = await processor(req.audio);
+  const output = await scorer.score(input_features, req.target, req.language);
+  post({ type: 'result', requestId: req.requestId, output });
+}
+
+async function transcribe(req: RequestOf<'transcribe'>) {
+  const { scorer, processor } = requireWhisper();
+  const { input_features } = await processor(req.audio);
+  post({ type: 'transcribe-result', requestId: req.requestId, text: await scorer.transcribe(input_features, req.language) });
+}
+
+const progressFor = (requestId: number) => {
+  let last = 0;
+  return (label: string, loaded: number, total: number) => {
+    const now = performance.now();
+    if (now - last < 150 && loaded < total) return;
+    last = now;
+    post({ type: 'request-progress', requestId, label, loaded, total });
+  };
+};
+
+async function separate(req: RequestOf<'separate'>) {
+  const onProgress = progressFor(req.requestId);
+  const vocalsModel = await stemRunner('vocals', req.useCache, onProgress);
+  const accModel = await stemRunner('accompaniment', req.useCache, onProgress);
+  onProgress('보컬 분리 중', 0, 1);
+  const vocals44k = await separateVocals(req.left, req.right, vocalsModel, accModel);
+  const vocals16k = resample(vocals44k, SEPARATION_RATE, PITCH_RATE);
+  self.postMessage({ type: 'separate-result', requestId: req.requestId, result: { vocals44k, vocals16k } } satisfies WorkerResponse, [
+    vocals44k.buffer,
+    vocals16k.buffer,
+  ]);
+}
+
+async function pitch(req: RequestOf<'pitch'>) {
+  const run = await pitchRunner(req.useCache, progressFor(req.requestId));
+  const track = await trackPitch(req.audio, run, { gateDb: req.gateDb });
+  self.postMessage(
+    { type: 'pitch-result', requestId: req.requestId, result: { midi: track.midi, frameSeconds: track.frameSeconds } } satisfies WorkerResponse,
+    [track.midi.buffer],
+  );
+}
+
+async function handle(req: WorkerRequest) {
+  if (req.type === 'load') return load(req);
   try {
-    if (!scorer || !processor) throw new Error('모델이 아직 로드되지 않았어요.');
-    const { input_features } = await processor(req.audio);
-    const output = await scorer.score(input_features, req.target, req.language);
-    post({ type: 'result', requestId: req.requestId, output });
+    if (req.type === 'score') await score(req);
+    else if (req.type === 'transcribe') await transcribe(req);
+    else if (req.type === 'separate') await separate(req);
+    else await pitch(req);
   } catch (err) {
-    post({ type: 'score-error', requestId: req.requestId, message: err instanceof Error ? err.message : String(err) });
+    post({ type: 'request-error', requestId: req.requestId, message: err instanceof Error ? err.message : String(err) });
   }
 }
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
-  // load() and score() report their own errors; the catch is a backstop so one
+  // handle() reports its own errors; the catch is a backstop so one
   // unexpected throw can't leave the queue rejected and every later request unanswered.
-  queue = queue
-    .then(() => (req.type === 'load' ? load(req) : score(req)))
-    .catch((err) => console.error('ASR worker task failed', err));
+  queue = queue.then(() => handle(req)).catch((err) => console.error('ASR worker task failed', err));
 };

@@ -95,8 +95,7 @@ export class WhisperScorer {
     this.groupOf = Array.from({ length: this.vocabSize }, (_, id) => groups.get(keyOf[id]) ?? [id]);
   }
 
-  async score(inputFeatures: Tensor, targetText: string, language: string): Promise<ScoreOutput> {
-    const t0 = performance.now();
+  private async encode(inputFeatures: Tensor): Promise<Tensor> {
     const prep = (this.model as unknown as { _prepare_encoder_decoder_kwargs_for_generation: EncoderPrep })
       ._prepare_encoder_decoder_kwargs_for_generation.bind(this.model);
     const { encoder_outputs } = await prep({
@@ -105,25 +104,40 @@ export class WhisperScorer {
       model_input_name: 'input_features',
       generation_config: this.model.generation_config,
     });
-    const t1 = performance.now();
+    return encoder_outputs;
+  }
 
+  // Free decoding. Returns the prompt tokens and the transcribed text tokens.
+  private async decode(inputFeatures: Tensor, encoderOutputs: Tensor, language: string) {
     // generate() skips the encoder when encoder_outputs is passed in.
     const generated = (await this.model.generate({
       inputs: inputFeatures,
-      encoder_outputs,
+      encoder_outputs: encoderOutputs,
       language,
       task: 'transcribe',
       max_new_tokens: 160,
     } as unknown as Parameters<WhisperForConditionalGeneration['generate']>[0])) as Tensor;
     const ids = (generated.tolist()[0] as (number | bigint)[]).map(Number);
-    const t2 = performance.now();
-
     // Prompt = leading special tokens (<|startoftranscript|><|ko|><|transcribe|><|notimestamps|>).
     let p = 0;
     while (p < ids.length && ids[p] >= this.eot) p++;
-    const prompt = ids.slice(0, p);
     const heardIds: number[] = [];
     for (let i = p; i < ids.length && ids[i] < this.eot; i++) heardIds.push(ids[i]);
+    return { prompt: ids.slice(0, p), heardIds };
+  }
+
+  async transcribe(inputFeatures: Tensor, language: string): Promise<string> {
+    const encoderOutputs = await this.encode(inputFeatures);
+    const { heardIds } = await this.decode(inputFeatures, encoderOutputs, language);
+    return this.tokenizer.decode(heardIds, { skip_special_tokens: true }).trim();
+  }
+
+  async score(inputFeatures: Tensor, targetText: string, language: string): Promise<ScoreOutput> {
+    const t0 = performance.now();
+    const encoder_outputs = await this.encode(inputFeatures);
+    const t1 = performance.now();
+    const { prompt, heardIds } = await this.decode(inputFeatures, encoder_outputs, language);
+    const t2 = performance.now();
 
     const targetIds = this.tokenizer.encode(' ' + targetText.trim(), { add_special_tokens: false });
     const targetProbs = await this.tokenProbs(encoder_outputs, prompt, targetIds);
