@@ -127,7 +127,11 @@ export function prepareSpeech(samples: Float32Array): Float32Array | null {
   }
   const sorted = Array.from(rms).sort((a, b) => a - b);
   const noiseFloor = sorted[Math.floor(frames * 0.1)];
-  const threshold = Math.max(0.01, noiseFloor * 3);
+  const loud = sorted[Math.floor(frames * 0.95)];
+  // Capped relative to the loud passages: in a take that is almost all
+  // sustained singing, the "noise floor" percentile lands on the voice itself
+  // and 3x of it would reject everything.
+  const threshold = Math.max(0.01, Math.min(noiseFloor * 3, loud * 0.25));
 
   let first = -1;
   let last = -1;
