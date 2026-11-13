@@ -9,9 +9,9 @@ import { LANGUAGES } from '../data/languages';
 import { PitchChart } from './PitchChart';
 import { SegmentPicker } from './SegmentPicker';
 
-// Segments past Whisper's 30 s window are transcribed and scored in pieces
-// split at pauses; 60 s keeps separation memory and wait times reasonable.
-const MAX_SEGMENT = 60;
+// One Whisper window. A user take sung slower than the original can still run
+// past 30 s; that is transcribed and scored in pieces split at pauses.
+const MAX_SEGMENT = 30;
 
 interface Props {
   modelState: ModelState;
