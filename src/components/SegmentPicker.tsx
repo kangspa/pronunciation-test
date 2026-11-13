@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { BufferPlayer } from '../audio/bufferPlayer';
+import type { PlayMode } from '../audio/bufferPlayer';
 
 interface Props {
   buffer: AudioBuffer;
@@ -87,14 +88,12 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
   const [width, setWidth] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Playback stops (or loops) at the end bar while this is set.
-  const stopAtEndRef = useRef(false);
-  const rangeRef = useRef({ start, end, loop });
-  useEffect(() => {
-    rangeRef.current = { start, end, loop };
-  });
-
   useEffect(() => () => player.dispose(), [player]);
+
+  // Keep a running segment playback's stop/loop points on the moving bars.
+  useEffect(() => {
+    player.updateRange(start, end);
+  }, [player, start, end]);
 
   useEffect(() => {
     if (disabled) player.pause();
@@ -108,31 +107,19 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
     return () => ro.disconnect();
   }, []);
 
-  // Playhead animation and the stop/loop at the end bar.
+  // Playhead animation only; stops and loops are scheduled inside the player.
   useEffect(() => {
     if (!playing) return;
     let raf = 0;
     const tick = () => {
-      const t = player.time();
-      const r = rangeRef.current;
-      if (stopAtEndRef.current && t >= r.end) {
-        if (r.loop) {
-          player.play(r.start);
-          setNow(r.start);
-        } else {
-          stopAtEndRef.current = false;
-          player.pause(r.end);
-          setNow(r.end);
-          return;
-        }
-      } else {
-        setNow(t);
-      }
+      setNow(player.time());
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, player]);
+  // While paused the player's position is authoritative (e.g. where a scheduled stop landed).
+  const position = playing ? now : player.time();
 
   // The zoomed view follows the selection, but stays put while dragging so
   // the bars don't slide away under the pointer.
@@ -198,10 +185,11 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
     setNow(t);
   };
 
+  const segmentMode = (): PlayMode => (loop ? { kind: 'loop', start, end } : { kind: 'until', end });
+
   // Plays from t and stops (or loops) at the end bar.
   const playSegmentFrom = (t: number) => {
-    stopAtEndRef.current = true;
-    player.play(t);
+    player.play(t, segmentMode());
     setNow(t);
   };
 
@@ -216,7 +204,6 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
     } else {
       setDrag({ kind, view: v });
       if (kind === 'seek') {
-        stopAtEndRef.current = false;
         seek(timeAt(e.clientX, v));
       }
     }
@@ -249,7 +236,6 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
       else seek(end);
     } else if (d.kind === 'region') {
       // A plain click inside the selection seeks like anywhere else.
-      stopAtEndRef.current = false;
       seek(timeAt(e.clientX, d.view));
     }
   };
@@ -268,10 +254,9 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
       player.pause();
       return;
     }
-    // Starting inside the selection honours the loop/stop at the end bar.
-    const from = now >= duration - 0.05 ? 0 : now;
-    stopAtEndRef.current = loop && from >= start && from < end;
-    player.play(from);
+    // Starting inside the selection with loop on repeats the segment.
+    const from = position >= duration - 0.05 ? 0 : position;
+    player.play(from, loop && from >= start && from < end ? { kind: 'loop', start, end } : { kind: 'free' });
   };
 
   const ticks = useMemo(() => {
@@ -294,7 +279,6 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
     const t = Math.max(0, Math.min(duration, ((clientX - rect.left) / rect.width) * duration));
     const len = end - start;
     moveTo(t - len / 2, len);
-    stopAtEndRef.current = false;
     seek(Math.max(0, Math.min(t - len / 2, duration - len)));
   };
 
@@ -320,7 +304,7 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
           }}
         >
           <div className="overview-region" style={{ left: `${(start / duration) * 100}%`, width: `${((end - start) / duration) * 100}%` }} />
-          <div className="overview-playhead" style={{ left: `${(now / duration) * 100}%` }} />
+          <div className="overview-playhead" style={{ left: `${(position / duration) * 100}%` }} />
         </div>
       )}
       <div
@@ -363,7 +347,7 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
             <span className="handle-knob">{which === 'start' ? '시작' : '끝'}</span>
           </div>
         ))}
-        {now >= view.from && now <= view.to && <div className="timeline-playhead" style={{ left: `${pct(now)}%` }} />}
+        {position >= view.from && position <= view.to && <div className="timeline-playhead" style={{ left: `${pct(position)}%` }} />}
       </div>
       <div className="timeline-ruler">
         {ticks.map((t) => (
@@ -385,15 +369,20 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
             type="checkbox"
             checked={loop}
             onChange={(e) => {
-              setLoop(e.target.checked);
-              if (e.target.checked && playing && now >= start && now < end) stopAtEndRef.current = true;
+              const on = e.target.checked;
+              setLoop(on);
+              const t = player.time();
+              if (!playing || t < start || t >= end) return;
+              // Switch the running playback in place: loop on, or back to stopping at the end bar.
+              if (on) player.play(t, { kind: 'loop', start, end });
+              else if (player.playMode() === 'loop') player.play(t, { kind: 'until', end });
             }}
             disabled={disabled}
           />
           구간 반복
         </label>
         <span className="time-readout">
-          <b>{formatTime(now)}</b> / {formatTime(duration)}
+          <b>{formatTime(position)}</b> / {formatTime(duration)}
         </span>
         <span className="zoom-toggle" role="group" aria-label="보기">
           <button className={!zoom ? 'active' : ''} onClick={() => setZoom(false)}>
@@ -410,14 +399,14 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
           시작
           <SecondsField value={start} max={duration} disabled={disabled} onCommit={setStart} />초
         </label>
-        <button className="link-button" onClick={() => setStart(now)} disabled={disabled}>
+        <button className="link-button" onClick={() => setStart(position)} disabled={disabled}>
           현재 위치를 시작으로
         </button>
         <label>
           끝
           <SecondsField value={end} max={duration} disabled={disabled} onCommit={setEnd} />초
         </label>
-        <button className="link-button" onClick={() => setEnd(now)} disabled={disabled}>
+        <button className="link-button" onClick={() => setEnd(position)} disabled={disabled}>
           현재 위치를 끝으로
         </button>
         <span className={`small ${atLimit ? 'limit-note' : 'muted'}`}>
