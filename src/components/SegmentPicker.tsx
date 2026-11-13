@@ -371,11 +371,13 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
             onChange={(e) => {
               const on = e.target.checked;
               setLoop(on);
+              if (!playing) return;
               const t = player.time();
-              if (!playing || t < start || t >= end) return;
-              // Switch the running playback in place: loop on, or back to stopping at the end bar.
-              if (on) player.play(t, { kind: 'loop', start, end });
-              else if (player.playMode() === 'loop') player.play(t, { kind: 'until', end });
+              const inside = t >= start && t < end;
+              // Switch the running playback in place. Turning loop off must
+              // always leave loop playback, even if the bars moved past the playhead.
+              if (on && inside) player.play(t, { kind: 'loop', start, end });
+              else if (!on && player.playMode() === 'loop') player.play(t, inside ? { kind: 'until', end } : { kind: 'free' });
             }}
             disabled={disabled}
           />

@@ -80,12 +80,12 @@ export class BufferPlayer {
   // Moves the loop points or the scheduled stop of the current playback,
   // e.g. while the user drags a bar.
   updateRange(start: number, end: number) {
-    if (!this.src) return;
-    if (this.mode.kind === 'loop') this.mode = { kind: 'loop', start, end };
-    else if (this.mode.kind === 'until') this.mode = { kind: 'until', end };
-    else return;
-    // The loop-time formula needs a fresh origin once the loop points change.
-    this.startedOffset = this.time();
+    if (!this.src || this.mode.kind === 'free') return;
+    // Read the position under the old range first, then restart the
+    // position formula from it under the new one.
+    const t = this.time();
+    this.mode = this.mode.kind === 'loop' ? { kind: 'loop', start, end } : { kind: 'until', end };
+    this.startedOffset = t;
     this.startedCtxTime = this.ctx!.currentTime;
     this.applyMode();
   }
