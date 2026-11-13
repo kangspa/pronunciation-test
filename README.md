@@ -26,6 +26,20 @@ Silence is rejected before inference (`prepareSpeech` in `src/lib/recorder.ts`) 
 
 Limitation: Whisper has a strong language prior and tends to "autocorrect" toward plausible text, so this is an ASR-based approximation rather than phoneme-level pronunciation assessment.
 
+## Song mode (pronunciation + pitch)
+
+The user uploads a song, picks a segment of up to 25 s, and the app builds a reference from it (`src/audio/`, all in the Web Worker):
+
+1. **Vocal separation**: Spleeter 2-stem ONNX models (sherpa-onnx export). STFT (4096 / hop 1024, Hann, `center=false`) → both stem models predict magnitudes → mask `v² / (v² + a²)` on the original complex STFT → inverse STFT. Pipeline mirrors sherpa-onnx's `scripts/spleeter/separate_onnx.py`.
+2. **Pitch**: [SwiftF0](https://github.com/lars76/swift_f0) (398 KB ONNX, raw 16 kHz in, pitch + confidence per 16 ms out). Separated vocals keep faint accompaniment bleed in the gaps, so reference frames more than 20 dB below the loud passages are treated as unvoiced. On a test vocal mixed with a synthetic band this cut false voicing from 65% to 5%, and 82% of the clean vocal's pitch frames stayed within 50 cents (0% without separation).
+3. **Lyrics**: Whisper transcribes the separated vocals; the user corrects them, and they become the pronunciation target.
+
+Segments are stored in IndexedDB (`src/lib/songStore.ts`): pitch track, lyrics, and 16-bit WAV clips of the original segment and vocals.
+
+When the user sings it back, the take is scored twice: pronunciation as above against the lyrics, and pitch with `comparePitch` (`src/audio/pitchCompare.ts`). That search finds the start offset and octave, then aligns the two tracks with banded DTW (±0.4 s) so small tempo drift is tolerated. Each voiced reference frame scores 1 within 50 cents, falling linearly to 0 at 2 semitones; frames where the user is silent score 0. The overall score is the mean of pronunciation and pitch.
+
+Limits: pitch is compared to the original singer, so a different key (other than whole octaves) scores low. Recording while the original plays through speakers will leak into the mic, so the UI asks users to sing without accompaniment.
+
 ## Models
 
 | Preset | Device | Download |
@@ -34,6 +48,8 @@ Limitation: Whisper has a strong language prior and tends to "autocorrect" towar
 | Whisper Base | WASM, q8 | ~81 MB |
 | **Whisper Small** (default) | WASM, q8 | ~253 MB |
 | Whisper Large v3 Turbo | WebGPU, q4f16 (experimental, untested) | ~568 MB |
+
+Song mode adds Spleeter vocals + accompaniment (int8, 26 MB each) and SwiftF0 (0.4 MB), downloaded on first analysis into a separate `audio-models-cache` bucket.
 
 Weights are stored by transformers.js in Cache Storage (`transformers-cache`), not `localStorage` (which is capped around 5 MB). The model page lists, loads, and deletes them; `src/asr/modelStore.ts` matches cache entries by their Hugging Face URL.
 
