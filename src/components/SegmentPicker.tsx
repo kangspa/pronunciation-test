@@ -5,15 +5,16 @@ interface Props {
   start: number;
   end: number;
   maxLength: number;
+  disabled?: boolean;
   onChange: (start: number, end: number) => void;
 }
 
 const HEIGHT = 96;
 
 // Waveform with a draggable selection. Drag to select; the inputs below fine-tune.
-export function SegmentPicker({ buffer, start, end, maxLength, onChange }: Props) {
+export function SegmentPicker({ buffer, start, end, maxLength, disabled = false, onChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const peaksRef = useRef<Float32Array | null>(null);
+  const peaksRef = useRef<{ buffer: AudioBuffer; peaks: Float32Array } | null>(null);
   const dragRef = useRef<number | null>(null);
   const duration = buffer.duration;
 
@@ -29,7 +30,8 @@ export function SegmentPicker({ buffer, start, end, maxLength, onChange }: Props
     ctx.scale(dpr, dpr);
 
     // Peaks are recomputed only when the canvas width or file changes.
-    if (!peaksRef.current || peaksRef.current.length !== width) {
+    const cached = peaksRef.current;
+    if (!cached || cached.buffer !== buffer || cached.peaks.length !== width) {
       const data = buffer.getChannelData(0);
       const peaks = new Float32Array(width);
       const per = Math.max(1, Math.floor(data.length / width));
@@ -38,9 +40,9 @@ export function SegmentPicker({ buffer, start, end, maxLength, onChange }: Props
         for (let i = x * per; i < Math.min(data.length, (x + 1) * per); i++) max = Math.max(max, Math.abs(data[i]));
         peaks[x] = max;
       }
-      peaksRef.current = peaks;
+      peaksRef.current = { buffer, peaks };
     }
-    const peaks = peaksRef.current;
+    const peaks = peaksRef.current!.peaks;
     const styles = getComputedStyle(canvas);
     const sx = (start / duration) * width;
     const ex = (end / duration) * width;
@@ -70,12 +72,13 @@ export function SegmentPicker({ buffer, start, end, maxLength, onChange }: Props
   };
 
   return (
-    <div className="segment-picker">
+    <div className={`segment-picker ${disabled ? 'disabled' : ''}`}>
       <canvas
         ref={canvasRef}
         className="waveform"
         style={{ height: HEIGHT }}
         onPointerDown={(e) => {
+          if (disabled) return;
           e.currentTarget.setPointerCapture(e.pointerId);
           dragRef.current = timeAt(e.clientX);
         }}
@@ -101,6 +104,7 @@ export function SegmentPicker({ buffer, start, end, maxLength, onChange }: Props
             min={0}
             max={duration}
             step={0.1}
+            disabled={disabled}
             value={start.toFixed(1)}
             onChange={(e) => {
               const s = Math.max(0, Math.min(Number(e.target.value), end - 1));
@@ -116,6 +120,7 @@ export function SegmentPicker({ buffer, start, end, maxLength, onChange }: Props
             min={0}
             max={duration}
             step={0.1}
+            disabled={disabled}
             value={end.toFixed(1)}
             onChange={(e) => {
               const v = Math.min(duration, Math.max(Number(e.target.value), start + 1));

@@ -18,6 +18,9 @@ interface Props {
 }
 
 interface Draft {
+  // Bounds the analysis actually ran on; saved instead of the live selection.
+  start: number;
+  end: number;
   original: Blob;
   vocals: Blob;
   vocals16k: Float32Array;
@@ -125,9 +128,11 @@ export function SongEditor({ modelState, saveModels }: Props) {
     const progress = (label: string, loaded: number, total: number) => {
       if (mountedRef.current) setStep({ kind: 'working', label, percent: total > 1 ? (loaded / total) * 100 : null });
     };
+    const segStart = start;
+    const segEnd = end;
     try {
-      const s0 = Math.floor(start * SEPARATION_RATE);
-      const s1 = Math.floor(end * SEPARATION_RATE);
+      const s0 = Math.floor(segStart * SEPARATION_RATE);
+      const s1 = Math.floor(segEnd * SEPARATION_RATE);
       const left = buffer.getChannelData(0).slice(s0, s1);
       const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1).slice(s0, s1) : left.slice();
       // Encode before the channel buffers are transferred to the worker.
@@ -147,6 +152,8 @@ export function SongEditor({ modelState, saveModels }: Props) {
       }
       if (!mountedRef.current) return;
       setDraft({
+        start: segStart,
+        end: segEnd,
         original,
         vocals: encodeWav(peakNormalize(vocals44k), SEPARATION_RATE),
         vocals16k,
@@ -185,8 +192,8 @@ export function SongEditor({ modelState, saveModels }: Props) {
         sourceName: file.name,
         language,
         lyrics: lyrics.trim(),
-        start,
-        end,
+        start: draft.start,
+        end: draft.end,
         createdAt: Date.now(),
         refMidi: draft.refMidi.slice().buffer,
         frameSeconds: draft.frameSeconds,
@@ -234,6 +241,7 @@ export function SongEditor({ modelState, saveModels }: Props) {
             start={start}
             end={end}
             maxLength={MAX_SEGMENT}
+            disabled={working}
             onChange={(s, e) => {
               setStart(s);
               setEnd(e);
