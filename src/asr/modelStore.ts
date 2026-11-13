@@ -1,3 +1,4 @@
+import { AUDIO_MODELS, AUDIO_MODEL_CACHE } from '../audio/audioModels';
 import type { ModelPreset } from './models';
 
 // transformers.js writes every downloaded file to this Cache Storage bucket,
@@ -91,6 +92,28 @@ export async function deleteModel(preset: ModelPreset): Promise<void> {
 export async function clearAll(): Promise<void> {
   if (!cacheSupported()) return;
   await caches.delete(CACHE_NAME);
+  await caches.delete(AUDIO_MODEL_CACHE);
+}
+
+// Song analysis models (Spleeter + SwiftF0): saved bytes per model id.
+export async function inspectAudioModels(): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  if (!cacheSupported()) return out;
+  try {
+    const cache = await caches.open(AUDIO_MODEL_CACHE);
+    for (const m of AUDIO_MODELS) {
+      const res = await cache.match(m.url);
+      if (res) out[m.id] = await responseSize(res);
+    }
+  } catch {
+    // Cache Storage unavailable: report nothing saved.
+  }
+  return out;
+}
+
+export async function deleteAudioModels(): Promise<void> {
+  if (!cacheSupported()) return;
+  await caches.delete(AUDIO_MODEL_CACHE);
 }
 
 export async function storageEstimate(): Promise<{ usage: number; quota: number; persisted: boolean } | null> {

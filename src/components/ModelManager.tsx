@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { loadPercent } from '../asr/asrClient';
 import type { ModelState } from '../asr/asrClient';
 import { MODEL_PRESETS } from '../asr/models';
+import { AUDIO_MODELS } from '../audio/audioModels';
 import {
   cacheSupported,
   clearAll,
+  deleteAudioModels,
   deleteModel,
   formatBytes,
+  inspectAudioModels,
   inspectCache,
   requestPersistence,
   storageEstimate,
@@ -28,9 +31,16 @@ interface StorageView {
   usage: number | null;
   quota: number | null;
   persisted: boolean;
+  // Saved bytes per song analysis model id.
+  audio: Record<string, number>;
 }
 
 const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
+
+async function scan(): Promise<StorageView> {
+  const [cache, est, audio] = await Promise.all([inspectCache(MODEL_PRESETS), storageEstimate(), inspectAudioModels()]);
+  return { ...cache, audio, usage: est?.usage ?? null, quota: est?.quota ?? null, persisted: est?.persisted ?? false };
+}
 
 export function ModelManager({ settings, modelState, onLoad, onChangeSettings }: Props) {
   const [storage, setStorage] = useState<StorageView | null>(null);
@@ -38,22 +48,15 @@ export function ModelManager({ settings, modelState, onLoad, onChangeSettings }:
   const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [cache, est] = await Promise.all([inspectCache(MODEL_PRESETS), storageEstimate()]);
-    setStorage({
-      ...cache,
-      usage: est?.usage ?? null,
-      quota: est?.quota ?? null,
-      persisted: est?.persisted ?? false,
-    });
+    setStorage(await scan());
   }, []);
 
   // Scan on open, and again once a download finishes so the "저장됨" badge appears.
   const isReady = modelState.status === 'ready';
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([inspectCache(MODEL_PRESETS), storageEstimate()]).then(([cache, est]) => {
-      if (cancelled) return;
-      setStorage({ ...cache, usage: est?.usage ?? null, quota: est?.quota ?? null, persisted: est?.persisted ?? false });
+    void scan().then((view) => {
+      if (!cancelled) setStorage(view);
     });
     return () => {
       cancelled = true;
@@ -205,6 +208,40 @@ export function ModelManager({ settings, modelState, onLoad, onChangeSettings }:
           );
         })}
       </ul>
+
+      <h2 className="section-title">노래 분석 모델</h2>
+      <p className="muted small">
+        노래 구간을 분석할 때 자동으로 내려받아요. 보컬 분리(Spleeter)와 음정 추적(SwiftF0)에 쓰여요.
+      </p>
+      <div className="model-item">
+        <div className="model-main">
+          {AUDIO_MODELS.map((m) => (
+            <p key={m.id} className="small audio-model-row">
+              <b>{m.label}</b> <span className="tag">약 {m.sizeMB}MB</span>
+              {storage?.audio[m.id] ? (
+                <span className="tag tag-ok">저장됨 · {formatBytes(storage.audio[m.id])}</span>
+              ) : (
+                <span className="muted">저장 안 됨</span>
+              )}
+            </p>
+          ))}
+        </div>
+        <div className="model-actions">
+          {storage && Object.keys(storage.audio).length > 0 && (
+            <button
+              className="button button-danger"
+              disabled={busy !== null}
+              onClick={() => {
+                if (window.confirm('노래 분석 모델을 삭제할까요? 다음에 분석할 때 다시 내려받아요.')) {
+                  void runBusy('audio', deleteAudioModels);
+                }
+              }}
+            >
+              삭제
+            </button>
+          )}
+        </div>
+      </div>
 
       {storage && (
         <div className="danger-zone">
