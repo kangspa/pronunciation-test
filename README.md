@@ -36,6 +36,12 @@ The user uploads a song (typically 2–6 minutes), picks a segment of up to 30 s
 
 Segments are stored in IndexedDB (`src/lib/songStore.ts`): pitch track, lyrics, and 16-bit WAV clips of the original segment and vocals.
 
+## Attempt history
+
+Every twister and song attempt is saved in the same IndexedDB database (`attempts` store, `src/lib/attemptStore.ts`): score, the full per-character analysis, and for songs the user pitch aligned onto the reference plus per-frame scores. No audio is kept, so an attempt is a few KB (twister) to a few tens of KB (song). Each page lists its attempts newest first; opening one redraws the full result (characters heard differently, pitch chart). Deleting a song deletes its attempts. The pronunciation-only song test also tracks pitch for the chart, without adding it to the score.
+
+Browsers evict an origin's storage all at once, so records go together with any saved songs and models (Safari: after 7 days without a visit unless the site is added to the home screen).
+
 **Takes longer than 30 s**: a take sung more slowly than the original can run past one Whisper window, so audio is cut at the quietest 100 ms between 15 and 28 s into each piece (`src/audio/chunk.ts`). Transcription joins the pieces. For pronunciation scoring, each piece is free-decoded first; the target lyrics are then aligned to the concatenated heard text and split at the piece boundaries (`splitTargetByChunk`), and each part is teacher-forced on its own window. On a 60 s take this gave a probability for all 144 target characters and flagged exactly the two edited phrases.
 
 Practice has three separate tests, each with its own best score:

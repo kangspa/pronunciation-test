@@ -1398,3 +1398,153 @@
   opacity: 0.6;
   pointer-events: none;
 }
+
+/* Places heard differently from the target, listed above the tiles. */
+.mistakes {
+  margin: 10px 0 4px;
+}
+.mistakes .label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.mistakes ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mistake {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.mistake.extra {
+  cursor: default;
+  border-style: dashed;
+  border-color: var(--low);
+}
+.mistake mark {
+  background: var(--low-soft);
+  color: var(--low);
+  font-weight: 700;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.mistake-arrow,
+.mistake-missing {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.mistakes-none {
+  margin: 10px 0 4px;
+  color: var(--great);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* Attempt history */
+.history h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.history-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.history-list > li {
+  border-top: 1px solid var(--border);
+}
+.history-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.history-score {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  background: var(--surface-2);
+}
+.history-score.tone-great {
+  color: var(--great);
+  background: var(--great-soft);
+}
+.history-score.tone-good {
+  color: var(--good);
+  background: var(--good-soft);
+}
+.history-score.tone-ok {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.history-score.tone-low {
+  color: var(--low);
+  background: var(--low-soft);
+}
+.history-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.history-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.history-meta .tag {
+  margin-right: 0;
+}
+.history-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+}
+.history-caret {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.history-detail {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
+}
+.history-detail .result {
+  margin-top: 8px;
+  padding: 14px;
+  box-shadow: none;
+}
+.history-more {
+  margin-top: 10px;
+}

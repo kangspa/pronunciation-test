@@ -3,11 +3,15 @@ import { asrClient } from '../asr/asrClient';
 import type { ModelState } from '../asr/asrClient';
 import { LEVEL_LABEL } from '../data/twisters';
 import type { Twister } from '../data/twisters';
+import { useAttempts } from '../hooks/useAttempts';
 import { micErrorMessage, useRecorder } from '../hooks/useRecorder';
+import { newAttemptId, pronunciationSummary, twisterKey } from '../lib/attemptStore';
+import type { Attempt } from '../lib/attemptStore';
 import { prepareSpeech } from '../lib/recorder';
 import { analyze } from '../lib/scoring';
 import type { Analysis } from '../lib/scoring';
 import { recordBestScore } from '../lib/settings';
+import { AttemptHistory } from './AttemptHistory';
 import { ModelGate } from './ModelGate';
 import { RecordControls } from './RecordControls';
 import { ResultView } from './ResultView';
@@ -33,6 +37,8 @@ export function TwisterPanel({ twister, modelState, selectedModelId, onLoadModel
   // recorder's auto-stop always call the current one.
   const finishRef = useRef<() => void>(() => {});
   const recorder = useRecorder(() => finishRef.current());
+  const history = useAttempts(twisterKey(twister.id));
+  const [latestId, setLatestId] = useState<string | null>(null);
 
   useEffect(() => () => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -53,8 +59,23 @@ export function TwisterPanel({ twister, modelState, selectedModelId, onLoadModel
       const t0 = performance.now();
       const output = await asrClient.score(speech, twister.text, twister.language);
       const analysis = analyze(twister.text, output);
+      const ms = performance.now() - t0;
       onBest(recordBestScore(twister.id, analysis.overall));
-      if (recorder.isMounted()) setPhase({ kind: 'done', analysis, ms: performance.now() - t0 });
+      const attempt: Attempt = {
+        id: newAttemptId(),
+        item: twisterKey(twister.id),
+        createdAt: Date.now(),
+        score: analysis.overall,
+        target: twister.text,
+        modelId: modelState.status === 'ready' ? modelState.modelId : undefined,
+        analysisMs: ms,
+        pronunciation: analysis,
+      };
+      void history.add(attempt);
+      if (recorder.isMounted()) {
+        setLatestId(attempt.id);
+        setPhase({ kind: 'done', analysis, ms });
+      }
     } catch (err) {
       if (recorder.isMounted()) setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
@@ -109,6 +130,15 @@ export function TwisterPanel({ twister, modelState, selectedModelId, onLoadModel
       {phase.kind === 'error' && <p className="error">{phase.message}</p>}
       {audioUrl && !recorder.recording && <audio className="playback" controls src={audioUrl} />}
       {phase.kind === 'done' && <ResultView analysis={phase.analysis} elapsedMs={phase.ms} />}
+
+      {history.error && <p className="error">{history.error}</p>}
+      <AttemptHistory
+        attempts={history.attempts}
+        latestId={latestId}
+        summary={(a) => pronunciationSummary(a.pronunciation)}
+        renderDetail={(a) => a.pronunciation && <ResultView analysis={a.pronunciation} elapsedMs={a.analysisMs} />}
+        onDelete={(a) => void history.remove(a)}
+      />
     </section>
   );
 }
