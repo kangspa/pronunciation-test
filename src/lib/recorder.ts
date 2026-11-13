@@ -1,5 +1,6 @@
 export const SAMPLE_RATE = 16000;
-// Whisper sees at most 30 s per window.
+// Default recording limit: one Whisper window. Song practice passes a longer
+// limit; audio past 30 s is split at pauses (audio/chunk.ts).
 export const MAX_SECONDS = 30;
 
 export interface Recording {

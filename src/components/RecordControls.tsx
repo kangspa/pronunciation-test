@@ -5,6 +5,7 @@ interface Props {
   recording: boolean;
   busy: boolean;
   elapsed: number;
+  maxSeconds?: number;
   meterRef: RefObject<HTMLDivElement | null>;
   onStart: () => void;
   onStop: () => void;
@@ -13,7 +14,7 @@ interface Props {
   busyHint?: string;
 }
 
-export function RecordControls({ recording, busy, elapsed, meterRef, onStart, onStop, idleLabel, idleHint, busyHint }: Props) {
+export function RecordControls({ recording, busy, elapsed, maxSeconds = MAX_SECONDS, meterRef, onStart, onStop, idleLabel, idleHint, busyHint }: Props) {
   if (recording) {
     return (
       <div className="recorder">
@@ -22,7 +23,7 @@ export function RecordControls({ recording, busy, elapsed, meterRef, onStart, on
         </button>
         <div className="rec-info">
           <span className="rec-time">
-            {elapsed.toFixed(1)}초 / {MAX_SECONDS}초
+            {elapsed.toFixed(1)}초 / {maxSeconds}초
           </span>
           <div className="meter">
             <div className="meter-fill" ref={meterRef} />

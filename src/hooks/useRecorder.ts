@@ -11,8 +11,8 @@ export function micErrorMessage(err: unknown): string {
 
 // Owns one mic recording at a time and guarantees the stream is released on
 // unmount, on repeat clicks, and when the page is left mid-permission-prompt.
-// onLimit fires once the 30 s Whisper window is reached.
-export function useRecorder(onLimit: () => void) {
+// onLimit fires once maxSeconds is reached.
+export function useRecorder(onLimit: () => void, maxSeconds = MAX_SECONDS) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const recRef = useRef<ActiveRecording | null>(null);
@@ -44,7 +44,7 @@ export function useRecorder(onLimit: () => void) {
       const secs = (performance.now() - startedAt) / 1000;
       setElapsed(secs);
       if (meterRef.current) meterRef.current.style.transform = `scaleX(${rec.level()})`;
-      if (secs >= MAX_SECONDS) {
+      if (secs >= maxSeconds) {
         onLimitRef.current();
         return;
       }
@@ -52,7 +52,7 @@ export function useRecorder(onLimit: () => void) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [recording]);
+  }, [recording, maxSeconds]);
 
   // Resolves false when nothing started (already starting/recording or unmounted). Throws on mic errors.
   const start = useCallback(async (): Promise<boolean> => {
