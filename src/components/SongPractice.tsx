@@ -3,12 +3,16 @@ import { asrClient } from '../asr/asrClient';
 import type { ModelState } from '../asr/asrClient';
 import { comparePitch } from '../audio/pitchCompare';
 import type { PitchComparison } from '../audio/pitchCompare';
+import { useAttempts } from '../hooks/useAttempts';
 import { micErrorMessage, useRecorder } from '../hooks/useRecorder';
+import { newAttemptId, pronunciationSummary, songKey } from '../lib/attemptStore';
+import type { Attempt } from '../lib/attemptStore';
 import { prepareSpeech } from '../lib/recorder';
 import { analyze, grade } from '../lib/scoring';
 import type { Analysis } from '../lib/scoring';
 import { bestOf, getSong, putSong, withBest } from '../lib/songStore';
 import type { PracticeMode, Song } from '../lib/songStore';
+import { AttemptHistory } from './AttemptHistory';
 import { ModelGate } from './ModelGate';
 import { PitchChart } from './PitchChart';
 import { RecordControls } from './RecordControls';
@@ -22,18 +26,10 @@ interface Props {
   onLoadModel: (id: string) => void;
 }
 
-interface Outcome {
-  mode: PracticeMode;
-  pitch: PitchComparison | null;
-  pronunciation: Analysis | null;
-  score: number;
-  ms: number;
-}
-
 type Phase =
   | { kind: 'idle' }
   | { kind: 'analyzing'; label: string }
-  | { kind: 'done'; outcome: Outcome }
+  | { kind: 'done'; outcome: Attempt }
   | { kind: 'error'; message: string };
 
 const MODES: { id: PracticeMode; label: string; hint: string }[] = [
@@ -66,6 +62,8 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const finishRef = useRef<() => void>(() => {});
   const recorder = useRecorder(() => finishRef.current(), song ? recordLimit(song) : 30);
+  const history = useAttempts(songKey(songId));
+  const [latestId, setLatestId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,13 +120,17 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
         return;
       }
       const t0 = performance.now();
-      let pitch: PitchComparison | null = null;
-      let pronunciation: Analysis | null = null;
+      let pitch: PitchComparison | undefined;
+      let pronunciation: Analysis | undefined;
       // Each call transfers its buffer to the worker, so each gets its own copy.
-      if (runMode !== 'pronunciation') {
-        setLabel('음정 분석 중');
+      // The pronunciation test also tracks pitch, for the chart only: it is
+      // cheap, and a failure there must not lose the pronunciation result.
+      setLabel('음정 분석 중');
+      try {
         const userPitch = await asrClient.pitch(speech.slice(), PITCH_GATE_DB, saveModels);
         pitch = comparePitch({ midi: ref, frameSeconds: song.frameSeconds }, userPitch);
+      } catch (err) {
+        if (runMode !== 'pronunciation') throw err;
       }
       if (runMode !== 'pitch') {
         setLabel('발음 분석 중');
@@ -137,6 +139,20 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       }
       const score =
         runMode === 'pitch' ? pitch!.score : runMode === 'pronunciation' ? pronunciation!.overall : (pitch!.score + pronunciation!.overall) / 2;
+      const attempt: Attempt = {
+        id: newAttemptId(),
+        item: songKey(song.id),
+        createdAt: Date.now(),
+        mode: runMode,
+        score,
+        target: song.lyrics,
+        modelId: runMode !== 'pitch' && modelState.status === 'ready' ? modelState.modelId : undefined,
+        analysisMs: performance.now() - t0,
+        pronunciation,
+        pitch,
+        pitchForReference: runMode === 'pronunciation' && pitch ? true : undefined,
+      };
+      void history.add(attempt);
 
       const updated = withBest(song, runMode, score);
       if (updated !== song) {
@@ -144,7 +160,8 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
         if (recorder.isMounted()) setSong(updated);
       }
       if (recorder.isMounted()) {
-        setPhase({ kind: 'done', outcome: { mode: runMode, pitch, pronunciation, score, ms: performance.now() - t0 } });
+        setLatestId(attempt.id);
+        setPhase({ kind: 'done', outcome: attempt });
       }
     } catch (err) {
       if (recorder.isMounted()) setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -259,31 +276,62 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       {phase.kind === 'error' && <p className="error">{phase.message}</p>}
       {audioUrl && !recorder.recording && <audio className="playback" controls src={audioUrl} />}
 
-      {outcome?.mode === 'total' && outcome.pitch && outcome.pronunciation && (
-        <div className="result">
-          <ScoreHeader score={outcome.score} caption="종합">
-            <div>
-              <dt>발음</dt>
-              <dd>{outcome.pronunciation.overall.toFixed(1)}</dd>
-            </div>
-            <div>
-              <dt>음정</dt>
-              <dd>{outcome.pitch.score.toFixed(1)}</dd>
-            </div>
-          </ScoreHeader>
-          <p className="muted small">종합 점수 = (발음 점수 + 음정 점수) ÷ 2 · 분석 {(outcome.ms / 1000).toFixed(1)}초</p>
-        </div>
-      )}
-      {outcome?.pitch && <PitchResult pitch={outcome.pitch} reference={ref} frameSeconds={song.frameSeconds} />}
-      {outcome?.pronunciation && <ResultView analysis={outcome.pronunciation} elapsedMs={outcome.ms} />}
+      {outcome && <SongOutcome attempt={outcome} reference={ref} frameSeconds={song.frameSeconds} />}
 
-      {!outcome && mode !== 'pronunciation' && (
+      {!outcome && (
         <div className="result">
           <h3>원곡 음정</h3>
           <PitchChart reference={ref} frameSeconds={song.frameSeconds} />
         </div>
       )}
+
+      {history.error && <p className="error">{history.error}</p>}
+      <AttemptHistory
+        attempts={history.attempts}
+        latestId={latestId}
+        tag={(a) => MODES.find((m) => m.id === a.mode)?.label ?? null}
+        summary={songSummary}
+        renderDetail={(a) => <SongOutcome attempt={a} reference={ref} frameSeconds={song.frameSeconds} />}
+        onDelete={(a) => void history.remove(a)}
+      />
     </section>
+  );
+}
+
+function songSummary(a: Attempt): string {
+  if (a.mode === 'pronunciation') return pronunciationSummary(a.pronunciation);
+  const pitch = a.pitch ? `음정 ${a.pitch.score.toFixed(0)}점 · 50센트 이내 ${a.pitch.hitRate.toFixed(0)}%` : '';
+  if (a.mode === 'pitch' || !a.pronunciation) return pitch;
+  return `발음 ${a.pronunciation.overall.toFixed(0)}점 · ${pitch}`;
+}
+
+// Full result of one attempt; used for the attempt just made and for history entries.
+function SongOutcome({ attempt, reference, frameSeconds }: { attempt: Attempt; reference: Float32Array; frameSeconds: number }) {
+  const { pitch, pronunciation } = attempt;
+  const pitchView = pitch && (
+    <PitchResult pitch={pitch} reference={reference} frameSeconds={frameSeconds} forReference={!!attempt.pitchForReference} />
+  );
+  return (
+    <>
+      {attempt.mode === 'total' && pitch && pronunciation && (
+        <div className="result">
+          <ScoreHeader score={attempt.score} caption="종합">
+            <div>
+              <dt>발음</dt>
+              <dd>{pronunciation.overall.toFixed(1)}</dd>
+            </div>
+            <div>
+              <dt>음정</dt>
+              <dd>{pitch.score.toFixed(1)}</dd>
+            </div>
+          </ScoreHeader>
+          <p className="muted small">종합 점수 = (발음 점수 + 음정 점수) ÷ 2 · 분석 {(attempt.analysisMs / 1000).toFixed(1)}초</p>
+        </div>
+      )}
+      {!attempt.pitchForReference && pitchView}
+      {pronunciation && <ResultView analysis={pronunciation} elapsedMs={attempt.analysisMs} />}
+      {attempt.pitchForReference && pitchView}
+    </>
   );
 }
 
@@ -305,22 +353,40 @@ function ScoreHeader({ score, caption, children }: { score: number; caption: str
   );
 }
 
-function PitchResult({ pitch, reference, frameSeconds }: { pitch: PitchComparison; reference: Float32Array; frameSeconds: number }) {
+function PitchResult({
+  pitch,
+  reference,
+  frameSeconds,
+  forReference,
+}: {
+  pitch: PitchComparison;
+  reference: Float32Array;
+  frameSeconds: number;
+  // Measured alongside the pronunciation test; not part of its score.
+  forReference: boolean;
+}) {
   return (
     <div className="result">
-      <ScoreHeader score={pitch.score} caption="음정">
-        <div>
-          <dt>50센트 이내</dt>
-          <dd>{pitch.hitRate.toFixed(0)}%</dd>
-        </div>
-        <div>
-          <dt>평균 음정 오차</dt>
-          <dd>
-            {pitch.meanCents > 0 ? '+' : ''}
-            {pitch.meanCents.toFixed(0)}센트
-          </dd>
-        </div>
-      </ScoreHeader>
+      {forReference ? (
+        <p className="muted small">
+          발음 평가라서 음정은 점수에 반영하지 않았어요. 참고로 원곡과 비교한 음정이에요 (50센트 이내{' '}
+          {pitch.hitRate.toFixed(0)}%).
+        </p>
+      ) : (
+        <ScoreHeader score={pitch.score} caption="음정">
+          <div>
+            <dt>50센트 이내</dt>
+            <dd>{pitch.hitRate.toFixed(0)}%</dd>
+          </div>
+          <div>
+            <dt>평균 음정 오차</dt>
+            <dd>
+              {pitch.meanCents > 0 ? '+' : ''}
+              {pitch.meanCents.toFixed(0)}센트
+            </dd>
+          </div>
+        </ScoreHeader>
+      )}
       <p className="muted small">
         {Math.abs(pitch.meanCents) >= 30 && (pitch.meanCents > 0 ? '전체적으로 조금 높게 불렀어요. ' : '전체적으로 조금 낮게 불렀어요. ')}
         {pitch.octaveShift !== 0 &&

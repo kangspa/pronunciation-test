@@ -11,6 +11,88 @@ function tone(score: number) {
   return 'low';
 }
 
+type Mistake =
+  // A target character heard as another one, or not heard at all (heard = null).
+  | { kind: 'char'; index: number; word: string[]; pos: number; heard: string | null }
+  // A sound heard where the target has nothing, right after word[pos]
+  // (which may be mid-word); word = null means before the first character.
+  | { kind: 'extra'; word: string[] | null; pos: number; char: string };
+
+function findMistakes(analysis: Analysis): Mistake[] {
+  const wordOf: { word: string[]; pos: number }[] = [];
+  for (const w of analysis.words) {
+    const chars = w.map((c) => c.target);
+    chars.forEach((_, pos) => wordOf.push({ word: chars, pos }));
+  }
+  const extrasAfter = new Map<number, string[]>();
+  for (const ins of analysis.insertions) extrasAfter.set(ins.after, [...(extrasAfter.get(ins.after) ?? []), ins.char]);
+
+  const out: Mistake[] = [];
+  const pushExtras = (after: number) => {
+    for (const char of extrasAfter.get(after) ?? []) {
+      out.push(after >= 0 ? { kind: 'extra', ...wordOf[after], char } : { kind: 'extra', word: null, pos: -1, char });
+    }
+  };
+  pushExtras(-1);
+  analysis.chars.forEach((c, i) => {
+    if (c.heard !== c.target) out.push({ kind: 'char', index: i, ...wordOf[i], heard: c.heard });
+    pushExtras(i);
+  });
+  return out;
+}
+
+function Mistakes({ mistakes, onSelect }: { mistakes: Mistake[]; onSelect: (index: number) => void }) {
+  if (mistakes.length === 0) {
+    return <p className="mistakes-none">모든 글자가 원문대로 들렸어요.</p>;
+  }
+  return (
+    <div className="mistakes">
+      <span className="label">다르게 들린 곳 {mistakes.length}개</span>
+      <ul>
+        {mistakes.map((m, k) =>
+          m.kind === 'char' ? (
+            <li key={k}>
+              <button className="mistake" onClick={() => onSelect(m.index)}>
+                <span>
+                  {m.word.map((ch, p) => (p === m.pos ? <mark key={p}>{ch}</mark> : ch))}
+                </span>
+                <span className="mistake-arrow" aria-hidden>
+                  →
+                </span>
+                {m.heard === null ? (
+                  <span className="mistake-missing">안 들림</span>
+                ) : (
+                  <span>
+                    {m.word.map((ch, p) => (p === m.pos ? <mark key={p}>{m.heard}</mark> : ch))}
+                  </span>
+                )}
+              </button>
+            </li>
+          ) : (
+            <li key={k}>
+              <span className="mistake extra">
+                {m.word ? (
+                  <span>
+                    {m.word.map((ch, p) => (
+                      <span key={p}>
+                        {ch}
+                        {p === m.pos && <mark>{m.char}</mark>}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <mark>{m.char}</mark>
+                )}
+                <span className="mistake-missing">{m.word ? `「${m.char}」 소리가 더 들림` : '맨 앞에 더 들림'}</span>
+              </span>
+            </li>
+          ),
+        )}
+      </ul>
+    </div>
+  );
+}
+
 export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapsedMs: number }) {
   const [selected, setSelected] = useState<number | null>(null);
   const g = grade(analysis.overall);
@@ -20,6 +102,7 @@ export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapse
   for (const ins of analysis.insertions) {
     insertionsAfter.set(ins.after, [...(insertionsAfter.get(ins.after) ?? []), ins.char]);
   }
+  const mistakes = findMistakes(analysis);
 
   let index = -1;
   const detail: CharResult | null = selected !== null ? analysis.chars[selected] : null;
@@ -59,6 +142,8 @@ export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapse
         <span className="label">모델이 들은 문장</span>
         <p>{analysis.heardText || '(인식된 문장 없음)'}</p>
       </div>
+
+      <Mistakes mistakes={mistakes} onSelect={setSelected} />
 
       <div className="tiles" aria-label="글자별 결과">
         {insertionsAfter.get(-1)?.map((c, i) => (
