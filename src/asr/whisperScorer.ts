@@ -1,5 +1,60 @@
 import { Tensor } from '@huggingface/transformers';
 import type { PreTrainedTokenizer, WhisperForConditionalGeneration } from '@huggingface/transformers';
+import { splitAtPauses } from '../audio/chunk';
+import { alignChars } from '../lib/align';
+import { isContentChar } from '../lib/hangul';
+
+export type Featurize = (audio16k: Float32Array) => Promise<Tensor>;
+export type ChunkProgress = (index: number, total: number) => void;
+
+export interface TargetPiece {
+  text: string;
+  contentCount: number;
+}
+
+// Splits the target text into one piece per audio window. Each target
+// character goes to the window its aligned heard character came from;
+// characters nobody heard stay with the previous window. Alignment is
+// monotonic, so pieces are contiguous and cover every content character once.
+export function splitTargetByChunk(
+  target: string,
+  heardChars: string[],
+  heardChunk: number[],
+  chunkCount: number,
+): TargetPiece[] {
+  const cps = Array.from(target);
+  const contentPos: number[] = [];
+  cps.forEach((c, i) => {
+    if (isContentChar(c)) contentPos.push(i);
+  });
+  if (chunkCount <= 1) return [{ text: target, contentCount: contentPos.length }];
+
+  const assign = new Array<number>(contentPos.length).fill(-1);
+  for (const op of alignChars(contentPos.map((p) => cps[p]), heardChars)) {
+    if (op.kind === 'match') assign[op.t] = heardChunk[op.h];
+  }
+  let prev = 0;
+  for (let i = 0; i < assign.length; i++) {
+    assign[i] = Math.max(prev, assign[i]);
+    prev = assign[i];
+  }
+
+  const pieces: TargetPiece[] = [];
+  for (let k = 0; k < chunkCount; k++) {
+    const first = assign.indexOf(k);
+    if (first < 0) {
+      pieces.push({ text: '', contentCount: 0 });
+      continue;
+    }
+    let last = first;
+    while (last + 1 < assign.length && assign[last + 1] === k) last++;
+    // Spaces and punctuation between pieces belong to the earlier one; they are trimmed anyway.
+    const from = k === 0 ? 0 : contentPos[first];
+    const to = last + 1 < contentPos.length ? contentPos[last + 1] : cps.length;
+    pieces.push({ text: cps.slice(from, to).join('').trim(), contentCount: last - first + 1 });
+  }
+  return pieces;
+}
 
 export interface CharProb {
   char: string;
@@ -58,10 +113,12 @@ export class WhisperScorer {
   // so " 공" and "공" count as the same answer.
   private readonly groupOf: number[][];
   private readonly utf8 = new TextDecoder('utf-8');
+  private readonly featurize: Featurize;
 
-  constructor(model: WhisperForConditionalGeneration, tokenizer: PreTrainedTokenizer) {
+  constructor(model: WhisperForConditionalGeneration, tokenizer: PreTrainedTokenizer, featurize: Featurize) {
     this.model = model;
     this.tokenizer = tokenizer;
+    this.featurize = featurize;
     const genConfig = model.generation_config as unknown as { eos_token_id: number };
     this.eot = genConfig.eos_token_id;
 
@@ -126,29 +183,68 @@ export class WhisperScorer {
     return { prompt: ids.slice(0, p), heardIds };
   }
 
-  async transcribe(inputFeatures: Tensor, language: string): Promise<string> {
-    const encoderOutputs = await this.encode(inputFeatures);
-    const { heardIds } = await this.decode(inputFeatures, encoderOutputs, language);
-    return this.tokenizer.decode(heardIds, { skip_special_tokens: true }).trim();
+  // Audio of any length; longer than one Whisper window is transcribed piecewise.
+  async transcribe(audio16k: Float32Array, language: string, onChunk?: ChunkProgress): Promise<string> {
+    const parts: string[] = [];
+    const chunks = splitAtPauses(audio16k, 16000);
+    for (const [k, [s, e]] of chunks.entries()) {
+      onChunk?.(k, chunks.length);
+      const features = await this.featurize(audio16k.subarray(s, e));
+      const encoderOutputs = await this.encode(features);
+      const { heardIds } = await this.decode(features, encoderOutputs, language);
+      parts.push(this.tokenizer.decode(heardIds, { skip_special_tokens: true }).trim());
+    }
+    return parts.filter(Boolean).join(' ');
   }
 
-  async score(inputFeatures: Tensor, targetText: string, language: string): Promise<ScoreOutput> {
+  // Scores audio of any length against the target text. Beyond one Whisper
+  // window, the audio is cut at pauses and the target is split to match by
+  // aligning it to what was heard in each piece; every piece is then teacher-
+  // forced on its own window.
+  async score(audio16k: Float32Array, targetText: string, language: string, onChunk?: ChunkProgress): Promise<ScoreOutput> {
     const t0 = performance.now();
-    const encoder_outputs = await this.encode(inputFeatures);
-    const t1 = performance.now();
-    const { prompt, heardIds } = await this.decode(inputFeatures, encoder_outputs, language);
+    const chunks = splitAtPauses(audio16k, 16000);
+    const windows: { encoderOutputs: Tensor; prompt: number[]; heardIds: number[] }[] = [];
+    let encodeMs = 0;
+    for (const [k, [s, e]] of chunks.entries()) {
+      onChunk?.(k, chunks.length);
+      const ts = performance.now();
+      const features = await this.featurize(audio16k.subarray(s, e));
+      const encoderOutputs = await this.encode(features);
+      encodeMs += performance.now() - ts;
+      windows.push({ encoderOutputs, ...(await this.decode(features, encoderOutputs, language)) });
+    }
     const t2 = performance.now();
 
-    const targetIds = this.tokenizer.encode(' ' + targetText.trim(), { add_special_tokens: false });
-    const targetProbs = await this.tokenProbs(encoder_outputs, prompt, targetIds);
-    const heardProbs = heardIds.length ? await this.tokenProbs(encoder_outputs, prompt, heardIds) : [];
+    const heard: CharProb[] = [];
+    const heardChunk: number[] = [];
+    for (const [k, w] of windows.entries()) {
+      const probs = w.heardIds.length ? await this.tokenProbs(w.encoderOutputs, w.prompt, w.heardIds) : [];
+      for (const c of this.charProbs(w.heardIds, probs)) {
+        heard.push(c);
+        heardChunk.push(k);
+      }
+    }
+
+    const pieces = splitTargetByChunk(targetText.trim(), heard.map((c) => c.char), heardChunk, windows.length);
+    const target: CharProb[] = [];
+    for (const [k, piece] of pieces.entries()) {
+      if (!piece.text) continue;
+      const ids = this.tokenizer.encode(' ' + piece.text, { add_special_tokens: false });
+      const chars = this.charProbs(ids, await this.tokenProbs(windows[k].encoderOutputs, windows[k].prompt, ids));
+      // Tokenisation should round-trip; if not, keep positions aligned with zeros.
+      for (let i = 0; i < piece.contentCount; i++) target.push(chars.length === piece.contentCount ? chars[i] : { char: '', prob: 0 });
+    }
     const t3 = performance.now();
 
     return {
-      heardText: this.tokenizer.decode(heardIds, { skip_special_tokens: true }).trim(),
-      target: this.charProbs(targetIds, targetProbs),
-      heard: this.charProbs(heardIds, heardProbs),
-      timings: { encoderMs: t1 - t0, decodeMs: t2 - t1, scoreMs: t3 - t2 },
+      heardText: windows
+        .map((w) => this.tokenizer.decode(w.heardIds, { skip_special_tokens: true }).trim())
+        .filter(Boolean)
+        .join(' '),
+      target,
+      heard,
+      timings: { encoderMs: encodeMs, decodeMs: t2 - t0 - encodeMs, scoreMs: t3 - t2 },
     };
   }
 

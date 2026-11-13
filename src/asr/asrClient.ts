@@ -118,12 +118,12 @@ class AsrClient {
   }
 
   // The audio buffers passed below are transferred to the worker; callers must not reuse them.
-  score(audio: Float32Array, target: string, language: string): Promise<ScoreOutput> {
-    return this.request((requestId) => ({ type: 'score', requestId, audio, target, language }), [audio.buffer]);
+  score(audio: Float32Array, target: string, language: string, onProgress?: RequestProgress): Promise<ScoreOutput> {
+    return this.request((requestId) => ({ type: 'score', requestId, audio, target, language }), [audio.buffer], onProgress);
   }
 
-  transcribe(audio: Float32Array, language: string): Promise<string> {
-    return this.request((requestId) => ({ type: 'transcribe', requestId, audio, language }), [audio.buffer]);
+  transcribe(audio: Float32Array, language: string, onProgress?: RequestProgress): Promise<string> {
+    return this.request((requestId) => ({ type: 'transcribe', requestId, audio, language }), [audio.buffer], onProgress);
   }
 
   separate(left: Float32Array, right: Float32Array, useCache: boolean, onProgress?: RequestProgress): Promise<SeparateResult> {

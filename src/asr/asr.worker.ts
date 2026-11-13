@@ -72,7 +72,8 @@ async function load(req: Extract<WorkerRequest, { type: 'load' }>) {
       device: preset.device,
       progress_callback,
     } as Parameters<typeof WhisperForConditionalGeneration.from_pretrained>[1])) as WhisperForConditionalGeneration;
-    scorer = new WhisperScorer(model, processor.tokenizer!);
+    const proc = processor;
+    scorer = new WhisperScorer(model, processor.tokenizer!, async (audio) => (await proc(audio)).input_features);
     post({ type: 'ready', modelId: preset.id, device: preset.device });
   } catch (err) {
     model = null;
@@ -84,21 +85,22 @@ async function load(req: Extract<WorkerRequest, { type: 'load' }>) {
 type RequestOf<T extends WorkerRequest['type']> = Extract<WorkerRequest, { type: T }>;
 
 function requireWhisper() {
-  if (!scorer || !processor) throw new Error('음성 인식 모델이 아직 로드되지 않았어요.');
-  return { scorer, processor };
+  if (!scorer) throw new Error('음성 인식 모델이 아직 로드되지 않았어요.');
+  return scorer;
 }
 
+// "(2/3)" only when the audio spans several Whisper windows.
+const chunkLabel = (requestId: number, label: string) => (k: number, n: number) =>
+  post({ type: 'request-progress', requestId, label: n > 1 ? `${label} (${k + 1}/${n})` : label, loaded: k, total: n });
+
 async function score(req: RequestOf<'score'>) {
-  const { scorer, processor } = requireWhisper();
-  const { input_features } = await processor(req.audio);
-  const output = await scorer.score(input_features, req.target, req.language);
+  const output = await requireWhisper().score(req.audio, req.target, req.language, chunkLabel(req.requestId, '발음 분석 중'));
   post({ type: 'result', requestId: req.requestId, output });
 }
 
 async function transcribe(req: RequestOf<'transcribe'>) {
-  const { scorer, processor } = requireWhisper();
-  const { input_features } = await processor(req.audio);
-  post({ type: 'transcribe-result', requestId: req.requestId, text: await scorer.transcribe(input_features, req.language) });
+  const text = await requireWhisper().transcribe(req.audio, req.language, chunkLabel(req.requestId, '가사 인식 중'));
+  post({ type: 'transcribe-result', requestId: req.requestId, text });
 }
 
 const progressFor = (requestId: number) => {
