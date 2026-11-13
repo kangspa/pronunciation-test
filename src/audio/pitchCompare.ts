@@ -21,10 +21,21 @@ export interface PitchComparison {
 const PERFECT_SEMITONES = 0.5;
 const FAIL_SEMITONES = 2;
 const MAX_LAG_SECONDS = 2;
+// DTW band half-width: a fixed slack plus a share of the length, since local
+// timing differences grow with the segment (a 60 s take may drift seconds).
 const BAND_SECONDS = 0.4;
+const BAND_SHARE = 0.05;
+// Overall tempo ratios outside this range are treated as unrelated takes.
+const MIN_TEMPO = 0.7;
+const MAX_TEMPO = 1.4;
 const CAP = 6;
 
 const voiced = (x: number) => !Number.isNaN(x);
+
+function lastIndex(x: Float32Array, pred: (v: number) => boolean): number {
+  for (let i = x.length - 1; i >= 0; i--) if (pred(x[i])) return i;
+  return -1;
+}
 
 export function comparePitch(ref: PitchTrack, user: PitchTrack): PitchComparison {
   const r = ref.midi;
@@ -32,7 +43,18 @@ export function comparePitch(ref: PitchTrack, user: PitchTrack): PitchComparison
   const fs = ref.frameSeconds;
   const { lag, octave } = findOffset(r, u, Math.round(MAX_LAG_SECONDS / fs));
   const shifted = u.map((x) => x + 12 * octave);
-  const path = bandedDtw(r, shifted, lag, Math.round(BAND_SECONDS / fs));
+
+  // Centre the band on the line through both tracks' first and last voiced
+  // frames, so a uniformly slower or faster take stays inside it end to end.
+  const rFirst = Math.max(0, r.findIndex(voiced));
+  const rLast = lastIndex(r, voiced);
+  const uLast = lastIndex(u, voiced);
+  const uFirst = rFirst + lag;
+  const tempo = rLast > rFirst && uLast > uFirst ? (uLast - uFirst) / (rLast - rFirst) : 1;
+  const slope = Math.min(MAX_TEMPO, Math.max(MIN_TEMPO, tempo));
+  const center = (i: number) => uFirst + (i - rFirst) * slope;
+  const band = Math.round(BAND_SECONDS / fs + BAND_SHARE * r.length);
+  const path = bandedDtw(r, shifted, center, band);
 
   // Each reference frame takes the median of the user frames the path pairs it with.
   const matches: number[][] = Array.from({ length: r.length }, () => []);
@@ -102,9 +124,9 @@ function findOffset(r: Float32Array, u: Float32Array, maxLag: number): { lag: nu
   return best;
 }
 
-// DTW restricted to a band around j = i + lag, so the user may drift in
-// tempo a little but can't be warped onto an unrelated part of the melody.
-function bandedDtw(r: Float32Array, u: Float32Array, lag: number, band: number): [number, number][] {
+// DTW restricted to a band around j = center(i), so the user may drift in
+// tempo but can't be warped onto an unrelated part of the melody.
+function bandedDtw(r: Float32Array, u: Float32Array, center: (i: number) => number, band: number): [number, number][] {
   const n = r.length;
   const m = u.length;
   if (n === 0 || m === 0) return [];
@@ -112,7 +134,8 @@ function bandedDtw(r: Float32Array, u: Float32Array, lag: number, band: number):
   const INF = 1e18;
   const D = new Float64Array(n * width).fill(INF);
   const step = new Uint8Array(n * width);
-  const lo = (i: number) => i + lag - band;
+  const loOf = Int32Array.from({ length: n }, (_, i) => Math.round(center(i)) - band);
+  const lo = (i: number) => loOf[i];
   const cost = (i: number, j: number) => {
     const a = voiced(r[i]);
     const b = voiced(u[j]);
