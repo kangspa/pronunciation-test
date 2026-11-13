@@ -20,7 +20,8 @@ export async function separateVocals(
   vocals: StemRunner,
   accompaniment: StemRunner,
 ): Promise<Float32Array> {
-  const specs = [stft(left, N_FFT, HOP), stft(right, N_FFT, HOP)];
+  // Only the 1024 modelled bins (~11 kHz) are kept; the rest are dropped from the vocals anyway.
+  const specs = [stft(left, N_FFT, HOP, MODEL_BINS), stft(right, N_FFT, HOP, MODEL_BINS)];
   const frames = specs[0].frames;
   if (frames === 0) return new Float32Array(left.length);
   const splits = Math.ceil(frames / SPLIT);
@@ -40,20 +41,19 @@ export async function separateVocals(
   const a = await accompaniment(input, dims);
 
   const out = new Float32Array(left.length);
-  specs.forEach((s, c) => {
-    const masked: Spectrogram = { frames, bins: s.bins, re: new Float32Array(s.re.length), im: new Float32Array(s.im.length) };
+  specs.forEach((s: Spectrogram, c) => {
+    // Masked in place: the original spectrogram isn't needed afterwards.
     for (let f = 0; f < frames; f++) {
       for (let k = 0; k < MODEL_BINS; k++) {
         const m = (c * padded + f) * MODEL_BINS + k;
         const v2 = v[m] * v[m];
         const mask = (v2 + 5e-11) / (v2 + a[m] * a[m] + 1e-10);
         const i = f * s.bins + k;
-        masked.re[i] = s.re[i] * mask;
-        masked.im[i] = s.im[i] * mask;
+        s.re[i] *= mask;
+        s.im[i] *= mask;
       }
-      // Bins above 1024 (~11 kHz) are not modelled; leaving them at zero drops them.
     }
-    const wav = istft(masked, N_FFT, HOP, left.length);
+    const wav = istft(s, N_FFT, HOP, left.length);
     for (let i = 0; i < out.length; i++) out[i] += wav[i] / 2;
   });
   return out;

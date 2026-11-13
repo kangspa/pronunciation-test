@@ -56,9 +56,11 @@ export interface Spectrogram {
 }
 
 // center=false STFT, matching what the Spleeter export was run with.
-export function stft(signal: Float32Array, nFft: number, hop: number): Spectrogram {
+// keepBins stores only the lowest bins; istft treats the rest as zero. A
+// 60 s stereo segment needs ~45 MB at 1024 bins instead of ~85 MB at 2049.
+export function stft(signal: Float32Array, nFft: number, hop: number, keepBins = nFft / 2 + 1): Spectrogram {
   const frames = signal.length >= nFft ? 1 + Math.floor((signal.length - nFft) / hop) : 0;
-  const bins = nFft / 2 + 1;
+  const bins = Math.min(keepBins, nFft / 2 + 1);
   const window = hann(nFft);
   const out: Spectrogram = { frames, bins, re: new Float32Array(frames * bins), im: new Float32Array(frames * bins) };
   const re = new Float32Array(nFft);
@@ -84,13 +86,14 @@ export function istft(spec: Spectrogram, nFft: number, hop: number, length: numb
   const re = new Float32Array(nFft);
   const im = new Float32Array(nFft);
   const { bins } = spec;
+  const half = nFft / 2;
   for (let f = 0; f < spec.frames; f++) {
-    for (let k = 0; k < bins; k++) {
-      re[k] = spec.re[f * bins + k];
-      im[k] = spec.im[f * bins + k];
+    for (let k = 0; k <= half; k++) {
+      re[k] = k < bins ? spec.re[f * bins + k] : 0;
+      im[k] = k < bins ? spec.im[f * bins + k] : 0;
     }
     // Hermitian mirror for a real signal.
-    for (let k = 1; k < nFft - bins + 1; k++) {
+    for (let k = 1; k < half; k++) {
       re[nFft - k] = re[k];
       im[nFft - k] = -im[k];
     }
