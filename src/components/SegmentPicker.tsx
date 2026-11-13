@@ -1,4 +1,41 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+// Keeps the typed text while focused and applies it on blur or Enter.
+// Committing per keystroke clamped and reformatted partial input, so typing
+// "60" became "6.0" after the first digit.
+function SecondsField({
+  value,
+  max,
+  disabled,
+  onCommit,
+}: {
+  value: number;
+  max: number;
+  disabled: boolean;
+  onCommit: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && draft.trim() !== '' && Number.isFinite(Number(draft))) onCommit(Number(draft));
+    setDraft(null);
+  };
+  return (
+    <input
+      type="number"
+      min={0}
+      max={max}
+      step={0.1}
+      disabled={disabled}
+      value={draft ?? value.toFixed(1)}
+      onFocus={() => setDraft(value.toFixed(1))}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+    />
+  );
+}
 
 interface Props {
   buffer: AudioBuffer;
@@ -99,15 +136,12 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
       <div className="segment-inputs">
         <label>
           시작
-          <input
-            type="number"
-            min={0}
+          <SecondsField
+            value={start}
             max={duration}
-            step={0.1}
             disabled={disabled}
-            value={start.toFixed(1)}
-            onChange={(e) => {
-              const s = Math.max(0, Math.min(Number(e.target.value), end - 1));
+            onCommit={(v) => {
+              const s = Math.max(0, Math.min(v, end - 1));
               onChange(s, Math.min(end, s + maxLength));
             }}
           />
@@ -115,16 +149,13 @@ export function SegmentPicker({ buffer, start, end, maxLength, disabled = false,
         </label>
         <label>
           끝
-          <input
-            type="number"
-            min={0}
+          <SecondsField
+            value={end}
             max={duration}
-            step={0.1}
             disabled={disabled}
-            value={end.toFixed(1)}
-            onChange={(e) => {
-              const v = Math.min(duration, Math.max(Number(e.target.value), start + 1));
-              onChange(Math.max(start, v - maxLength), v);
+            onCommit={(v) => {
+              const e = Math.min(duration, Math.max(v, start + 1));
+              onChange(Math.max(start, e - maxLength), e);
             }}
           />
           초
