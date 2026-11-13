@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import { deleteSong, listSongs } from '../lib/songStore';
-import type { Song } from '../lib/songStore';
+import { bestOf, deleteSong, listSongs } from '../lib/songStore';
+import type { PracticeMode, Song } from '../lib/songStore';
+
+const BEST_LABELS: [PracticeMode, string][] = [
+  ['pronunciation', '발음'],
+  ['pitch', '음정'],
+  ['total', '종합'],
+];
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
 
@@ -55,10 +61,19 @@ export function SongList() {
                   <span className="tag">
                     {fmt(s.start)}–{fmt(s.end)}
                   </span>
-                  {s.bestScore !== undefined && <span className="best">최고 {s.bestScore.toFixed(0)}점</span>}
                 </div>
                 <h2>{s.title}</h2>
-                <p>{s.lyrics || '(가사 없음 · 음정만 평가)'}</p>
+                <p className="clamp">{s.lyrics || '(가사 없음 · 음정만 평가)'}</p>
+                <p className="best-row">
+                  {BEST_LABELS.map(([mode, label]) => {
+                    const b = bestOf(s, mode);
+                    return (
+                      <span key={mode} className="tag">
+                        {label} {b !== undefined ? `${b.toFixed(0)}점` : '–'}
+                      </span>
+                    );
+                  })}
+                </p>
               </a>
               <button className="link-button danger small" onClick={() => void remove(s)}>
                 삭제

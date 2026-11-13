@@ -18,7 +18,21 @@ export interface Song {
   frameSeconds: number;
   original: Blob;
   vocals: Blob;
+  best?: Partial<Record<PracticeMode, number>>;
+  // Combined best saved before per-mode scores existed.
   bestScore?: number;
+}
+
+export type PracticeMode = 'pronunciation' | 'pitch' | 'total';
+
+export function bestOf(song: Song, mode: PracticeMode): number | undefined {
+  return song.best?.[mode] ?? (mode === 'total' ? song.bestScore : undefined);
+}
+
+export function withBest(song: Song, mode: PracticeMode, score: number): Song {
+  const prev = bestOf(song, mode);
+  if (prev !== undefined && prev >= score) return song;
+  return { ...song, best: { ...song.best, [mode]: score } };
 }
 
 function open(): Promise<IDBDatabase> {

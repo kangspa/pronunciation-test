@@ -9,8 +9,9 @@ import { LANGUAGES } from '../data/languages';
 import { PitchChart } from './PitchChart';
 import { SegmentPicker } from './SegmentPicker';
 
-// Leaves headroom inside Whisper's 30 s window for a slower user take.
-const MAX_SEGMENT = 25;
+// Segments past Whisper's 30 s window are transcribed and scored in pieces
+// split at pauses; 60 s keeps separation memory and wait times reasonable.
+const MAX_SEGMENT = 60;
 
 interface Props {
   modelState: ModelState;
@@ -148,7 +149,7 @@ export function SongEditor({ modelState, saveModels }: Props) {
       let text = '';
       if (whisperReady) {
         progress('가사 인식 중', 0, 1);
-        text = await asrClient.transcribe(vocals16k.slice(), language);
+        text = await asrClient.transcribe(vocals16k.slice(), language, progress);
       }
       if (!mountedRef.current) return;
       setDraft({
@@ -173,7 +174,9 @@ export function SongEditor({ modelState, saveModels }: Props) {
     if (!draft) return;
     setStep({ kind: 'working', label: '가사 인식 중', percent: null });
     try {
-      const text = await asrClient.transcribe(draft.vocals16k.slice(), language);
+      const text = await asrClient.transcribe(draft.vocals16k.slice(), language, (label, loaded, total) => {
+        if (mountedRef.current) setStep({ kind: 'working', label, percent: total > 1 ? (loaded / total) * 100 : null });
+      });
       if (mountedRef.current) setLyrics(text);
     } catch (err) {
       if (mountedRef.current) setError(err instanceof Error ? err.message : String(err));
