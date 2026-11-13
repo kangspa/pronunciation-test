@@ -943,22 +943,9 @@
 .segment-picker {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
 }
 
-.waveform {
-  width: 100%;
-  display: block;
-  border-radius: 10px;
-  background: var(--surface-2);
-  cursor: crosshair;
-  touch-action: none;
-}
-
-.segment-picker.disabled .waveform {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
 
 .segment-inputs {
   display: flex;
@@ -1164,4 +1151,250 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Segment timeline */
+.timeline {
+  --wave: var(--muted);
+  position: relative;
+  border-radius: 10px;
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: text;
+  touch-action: none;
+  user-select: none;
+}
+
+.timeline-wave {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.timeline-dim {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--bg);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.timeline-region {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-top: 3px solid var(--accent);
+  border-bottom: 3px solid var(--accent);
+  cursor: grab;
+}
+
+.timeline-region.at-limit {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.timeline-region-label {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.timeline-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  margin-left: -14px;
+  cursor: ew-resize;
+  z-index: 2;
+  outline: none;
+}
+
+.timeline-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 12px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.timeline-handle:focus-visible::before {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Labels sit outside the selection so they never overlap on short segments. */
+.handle-knob {
+  position: absolute;
+  top: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.handle-start .handle-knob {
+  right: 14px;
+  border-radius: 6px 0 0 6px;
+}
+
+.handle-end .handle-knob {
+  left: 14px;
+  border-radius: 0 6px 6px 0;
+}
+
+.timeline-overview {
+  position: relative;
+  height: 14px;
+  margin-bottom: 6px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.overview-region {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 4px;
+  border-radius: 7px;
+  background: var(--accent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.overview-playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--low);
+  pointer-events: none;
+}
+
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--low);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.timeline-playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -5px;
+  border: 6px solid transparent;
+  border-top-color: var(--low);
+}
+
+.timeline-ruler {
+  position: relative;
+  height: 18px;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.timeline-ruler span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0 4px;
+}
+
+.play-button {
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  font-size: 1rem;
+}
+
+.loop-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.loop-toggle input {
+  accent-color: var(--accent);
+}
+
+.time-readout {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.time-readout b {
+  color: var(--text);
+}
+
+.zoom-toggle {
+  display: inline-flex;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.zoom-toggle button {
+  border: 0;
+  background: var(--surface);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zoom-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.zoom-toggle button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.limit-note {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.segment-picker.disabled .timeline {
+  opacity: 0.6;
+  pointer-events: none;
 }

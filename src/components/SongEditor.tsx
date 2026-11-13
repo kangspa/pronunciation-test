@@ -48,8 +48,7 @@ export function SongEditor({ modelState, saveModels }: Props) {
   const [step, setStep] = useState<Step>({ kind: 'pick' });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const playerRef = useRef<{ ctx: AudioContext; src: AudioBufferSourceNode } | null>(null);
+  const [bufferId, setBufferId] = useState(0);
   const mountedRef = useRef(true);
 
   const whisperReady = modelState.status === 'ready';
@@ -58,8 +57,6 @@ export function SongEditor({ modelState, saveModels }: Props) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      playerRef.current?.src.stop();
-      void playerRef.current?.ctx.close();
     };
   }, []);
 
@@ -89,6 +86,7 @@ export function SongEditor({ modelState, saveModels }: Props) {
         const decoded = await ctx.decodeAudioData(await f.arrayBuffer());
         if (!mountedRef.current) return;
         setBuffer(decoded);
+        setBufferId((n) => n + 1);
         setStart(0);
         setEnd(Math.min(decoded.duration, 15));
       } finally {
@@ -100,31 +98,8 @@ export function SongEditor({ modelState, saveModels }: Props) {
     }
   };
 
-  const stopPreview = () => {
-    playerRef.current?.src.stop();
-    void playerRef.current?.ctx.close();
-    playerRef.current = null;
-    setPlaying(false);
-  };
-
-  const preview = () => {
-    if (!buffer) return;
-    if (playing) return stopPreview();
-    const ctx = new AudioContext();
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(ctx.destination);
-    src.onended = () => {
-      if (playerRef.current?.src === src) stopPreview();
-    };
-    src.start(0, start, end - start);
-    playerRef.current = { ctx, src };
-    setPlaying(true);
-  };
-
   const run = async () => {
     if (!buffer) return;
-    stopPreview();
     setError(null);
     const progress = (label: string, loaded: number, total: number) => {
       if (mountedRef.current) setStep({ kind: 'working', label, percent: total > 1 ? (loaded / total) * 100 : null });
@@ -239,7 +214,12 @@ export function SongEditor({ modelState, saveModels }: Props) {
       {buffer && (
         <div className="editor-box">
           <h2>1. 구간 선택</h2>
+          <p className="muted small">
+            재생하면서 <b>시작</b>·<b>끝</b> 막대를 끌어 연습할 구간을 정하세요. 막대를 놓으면 그 위치부터 다시 들려줘요. 구간은
+            최대 {MAX_SEGMENT}초예요.
+          </p>
           <SegmentPicker
+            key={bufferId}
             buffer={buffer}
             start={start}
             end={end}
@@ -253,9 +233,6 @@ export function SongEditor({ modelState, saveModels }: Props) {
             }}
           />
           <div className="row">
-            <button className="button" onClick={preview} disabled={working}>
-              {playing ? '■ 정지' : '▶ 구간 듣기'}
-            </button>
             <label className="inline-field">
               가사 언어
               <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={working}>
