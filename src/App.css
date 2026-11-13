@@ -789,3 +789,319 @@
     height: 88px;
   }
 }
+
+/* Navigation */
+.nav {
+  display: flex;
+  gap: 4px;
+  margin-right: auto;
+  margin-left: 12px;
+}
+
+.nav a {
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.nav a.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 520px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+  .brand span:last-child {
+    display: none;
+  }
+  .nav {
+    margin-left: 0;
+  }
+}
+
+/* Songs */
+.section-title {
+  margin: 28px 0 4px;
+  font-size: 1.1rem;
+}
+
+.song-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-link {
+  color: var(--text);
+  flex: 1;
+}
+
+.link-button.danger {
+  color: var(--low);
+  align-self: flex-end;
+  margin-top: 8px;
+}
+
+.file-drop {
+  display: block;
+  margin: 18px 0;
+  padding: 22px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.file-drop:hover {
+  border-color: var(--accent);
+}
+
+/* The label is the click target; the native input stays reachable but unseen. */
+.file-drop {
+  position: relative;
+}
+
+.file-drop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-drop:focus-within {
+  border-color: var(--accent);
+}
+
+.editor-box {
+  margin: 14px 0;
+  padding: 18px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.editor-box h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.editor-box h3,
+.result h3 {
+  margin: 18px 0 8px;
+  font-size: 0.95rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.inline-field select,
+.inline-field input,
+.segment-inputs input,
+.lyrics-input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.title-field {
+  display: flex;
+  margin: 14px 0;
+}
+
+.title-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.lyrics-input {
+  width: 100%;
+  resize: vertical;
+}
+
+.segment-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.waveform {
+  width: 100%;
+  display: block;
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.segment-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+.segment-inputs label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segment-inputs input {
+  width: 84px;
+}
+
+.players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.players label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  flex: 1;
+  min-width: 240px;
+}
+
+.players audio {
+  width: 100%;
+}
+
+.progress-bar.indeterminate {
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.audio-model-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Pitch chart */
+/* On phones the chart keeps a readable size and scrolls inside its box. */
+.chart-scroll {
+  overflow-x: auto;
+  border-radius: 10px;
+}
+
+.pitch-chart {
+  width: 100%;
+  min-width: 600px;
+  height: auto;
+  display: block;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.pitch-chart .grid {
+  stroke: var(--border);
+  stroke-width: 0.5;
+}
+
+.pitch-chart .grid-c {
+  stroke-width: 1.2;
+}
+
+.pitch-chart .axis {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.pitch-chart .ref-line {
+  fill: none;
+  stroke: var(--muted);
+  stroke-opacity: 0.45;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pitch-chart .user-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.user-line.tone-great {
+  stroke: var(--great);
+}
+.user-line.tone-ok {
+  stroke: var(--ok);
+}
+.user-line.tone-low {
+  stroke: var(--low);
+}
+.user-line.tone-plain {
+  stroke: var(--accent);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  margin-left: 8px;
+}
+
+.swatch.ref {
+  height: 7px;
+  background: var(--muted);
+  opacity: 0.45;
+  margin-left: 0;
+}
+.swatch.great {
+  background: var(--great);
+}
+.swatch.ok {
+  background: var(--ok);
+}
+.swatch.low {
+  background: var(--low);
+}

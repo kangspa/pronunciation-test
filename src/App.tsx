@@ -6,18 +6,29 @@ import { inspectCache, requestPersistence } from './asr/modelStore';
 import { useModelState } from './asr/useModelState';
 import { ModelManager } from './components/ModelManager';
 import { ModelStatusPill } from './components/ModelStatusPill';
+import { SongEditor } from './components/SongEditor';
+import { SongList } from './components/SongList';
+import { SongPractice } from './components/SongPractice';
 import { TwisterList } from './components/TwisterList';
 import { TwisterPanel } from './components/TwisterPanel';
 import { TWISTERS } from './data/twisters';
 import { loadBestScores, loadSettings, saveSettings } from './lib/settings';
 import type { Settings } from './lib/settings';
 
-type Route = { page: 'home' } | { page: 'twister'; id: string } | { page: 'models' };
+type Route =
+  | { page: 'home' }
+  | { page: 'twister'; id: string }
+  | { page: 'models' }
+  | { page: 'songs' }
+  | { page: 'song-new' }
+  | { page: 'song'; id: string };
 
 function parseHash(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '');
   const [page, id] = hash.split('/');
   if (page === 't' && id) return { page: 'twister', id: decodeURIComponent(id) };
+  if (page === 's' && id) return { page: 'song', id: decodeURIComponent(id) };
+  if (page === 'songs') return id === 'new' ? { page: 'song-new' } : { page: 'songs' };
   if (page === 'models') return { page: 'models' };
   return { page: 'home' };
 }
@@ -84,6 +95,14 @@ function App() {
           </span>
           <span>잰말놀이 발음 테스트</span>
         </a>
+        <nav className="nav">
+          <a href="#/" className={route.page === 'home' || route.page === 'twister' ? 'active' : ''}>
+            잰말놀이
+          </a>
+          <a href="#/songs" className={route.page.startsWith('song') ? 'active' : ''}>
+            노래
+          </a>
+        </nav>
         <ModelStatusPill state={modelState} />
       </header>
 
@@ -97,6 +116,18 @@ function App() {
           />
         )}
         {route.page === 'home' && <TwisterList best={best} modelState={modelState} />}
+        {route.page === 'songs' && <SongList />}
+        {route.page === 'song-new' && <SongEditor modelState={modelState} saveModels={settings.saveModels} />}
+        {route.page === 'song' && (
+          <SongPractice
+            key={route.id}
+            songId={route.id}
+            modelState={modelState}
+            selectedModelId={settings.modelId}
+            saveModels={settings.saveModels}
+            onLoadModel={loadModel}
+          />
+        )}
         {route.page === 'twister' &&
           (twister ? (
             <TwisterPanel
