@@ -79,3 +79,18 @@ Cross-Origin-Embedder-Policy: credentialless
 ```
 
 Without them the app still works, single-threaded.
+
+### Firebase Hosting (Spark plan)
+
+`firebase.json` serves `dist/` with the two headers above, `immutable` caching for the hashed files in `/assets/`, and `no-cache` for `index.html` so a new deploy is picked up on the next visit. No rewrites are needed because routing is hash-based.
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase use --add      # pick the project; writes .firebaserc (commit it)
+npm run deploy          # build + firebase deploy --only hosting
+```
+
+Check after the first deploy: `curl -sI https://<project-id>.web.app | grep -i cross-origin` should list both headers, and `crossOriginIsolated` should be `true` in the browser console. The local Hosting emulator can't be used to check headers on Windows: its glob matching uses `\` separators there, so no header rule ever matches.
+
+Traffic: only the app shell comes from Firebase, about 240 KB gzipped on a first visit (`index-*.js` 82 KB, `asr.worker-*.js` 154 KB, CSS 4 KB). Whisper and the song models come from Hugging Face, and the ONNX Runtime WASM from jsDelivr (transformers.js sets `wasmPaths` to jsDelivr by default; the 26 MB `ort-wasm-*.wasm` Vite copies into `dist/assets` is uploaded but never requested). Spark's 360 MB/day of Hosting transfer is therefore roughly 1,500 first visits a day; repeat visits are served from the browser cache. Each deploy stores a ~27 MB version against the 10 GB storage quota, so set a release retention limit in the Hosting console.
