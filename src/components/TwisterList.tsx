@@ -77,6 +77,11 @@ export function TwisterList({ best, modelState }: Props) {
               </div>
               <h2>{t.title}</h2>
               <p lang={t.language}>{t.text}</p>
+              {t.reading && (
+                <p className="reading small" lang="ko">
+                  {t.reading}
+                </p>
+              )}
             </a>
           </li>
         ))}

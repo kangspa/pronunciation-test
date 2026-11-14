@@ -104,7 +104,14 @@ export function TwisterPanel({ twister, modelState, selectedModelId, onLoadModel
           <span className={`level level-${twister.level}`}>{LEVEL_LABEL[twister.level]}</span>
           <span className="phrase-title">{twister.title}</span>
         </div>
-        <p className="phrase">{twister.text}</p>
+        <p className="phrase" lang={twister.language}>
+          {twister.text}
+        </p>
+        {twister.reading && (
+          <p className="reading" lang="ko">
+            <span className="tag">한글 발음</span> {twister.reading}
+          </p>
+        )}
       </div>
 
       {modelState.status !== 'ready' ? (

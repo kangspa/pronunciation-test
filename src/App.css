@@ -1733,3 +1733,14 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* Korean pronunciation guide under English and Japanese phrases. */
+.reading {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+  word-break: keep-all;
+}
+.card .reading {
+  margin-top: 2px;
+}
