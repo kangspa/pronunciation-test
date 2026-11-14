@@ -57,6 +57,38 @@ export const TWISTERS: Twister[] = [
     level: 3,
     language: 'ko',
   },
+
+  // English. Scored letter by letter, case-insensitive. No digits: Whisper may
+  // write "6" for "six", which would read as a mispronunciation.
+  { id: 'en-seashells', title: 'Seashells', text: 'She sells seashells by the seashore', level: 1, language: 'en' },
+  { id: 'en-lorry', title: 'Red lorry', text: 'Red lorry, yellow lorry, red lorry, yellow lorry', level: 1, language: 'en' },
+  { id: 'en-peter', title: 'Peter Piper', text: 'Peter Piper picked a peck of pickled peppers', level: 2, language: 'en' },
+  {
+    id: 'en-woodchuck',
+    title: 'Woodchuck',
+    text: 'How much wood would a woodchuck chuck if a woodchuck could chuck wood',
+    level: 2,
+    language: 'en',
+  },
+  { id: 'en-wristwatch', title: 'Wristwatch', text: 'Irish wristwatch, Swiss wristwatch', level: 3, language: 'en' },
+  {
+    id: 'en-new-york',
+    title: 'Unique New York',
+    text: 'Unique New York, unique New York, you know you need unique New York',
+    level: 3,
+    language: 'en',
+  },
+
+  // Japanese, written the way Whisper usually transcribes them: kanji and
+  // katakana are compared as written, so a kana spelling of a kanji word
+  // counts as a different character.
+  { id: 'ja-namamugi', title: '生麦生米生卵', text: '生麦生米生卵', level: 1, language: 'ja' },
+  { id: 'ja-bus', title: 'バスガス爆発', text: 'バスガス爆発', level: 1, language: 'ja' },
+  { id: 'ja-kaki', title: '柿食う客', text: '隣の客はよく柿食う客だ', level: 1, language: 'ja' },
+  { id: 'ja-tokkyo', title: '東京特許許可局', text: '東京特許許可局', level: 2, language: 'ja' },
+  { id: 'ja-makigami', title: '赤巻紙', text: '赤巻紙青巻紙黄巻紙', level: 2, language: 'ja' },
+  { id: 'ja-bouzu', title: '坊主の屏風', text: '坊主が屏風に上手に坊主の絵を描いた', level: 3, language: 'ja' },
+  { id: 'ja-chanson', title: '新春シャンソンショー', text: '新人歌手新春シャンソンショー', level: 3, language: 'ja' },
 ];
 
 export const LEVEL_LABEL: Record<Twister['level'], string> = { 1: '쉬움', 2: '보통', 3: '어려움' };

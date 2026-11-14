@@ -1,4 +1,4 @@
-// Whisper language codes offered for song lyrics.
+// Whisper language codes offered for tongue twisters and song lyrics.
 export const LANGUAGES = [
   { code: 'ko', label: '한국어' },
   { code: 'en', label: '영어' },

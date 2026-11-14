@@ -1,5 +1,6 @@
 import type { PitchComparison } from '../audio/pitchCompare';
 import { ATTEMPTS, tx } from './db';
+import { isMismatch } from './scoring';
 import type { Analysis } from './scoring';
 import type { PracticeMode } from './songStore';
 
@@ -27,7 +28,7 @@ export interface Attempt {
 // One line for a history row: what was heard and how many places differed.
 export function pronunciationSummary(analysis: Analysis | undefined): string {
   if (!analysis) return '';
-  const wrong = analysis.chars.filter((c) => c.heard !== c.target).length + analysis.insertions.length;
+  const wrong = analysis.chars.filter(isMismatch).length + analysis.insertions.length;
   const heard = analysis.heardText.trim() || '(인식된 문장 없음)';
   return wrong === 0 ? `「${heard}」 · 모두 원문대로` : `「${heard}」 · 다르게 들린 곳 ${wrong}개`;
 }

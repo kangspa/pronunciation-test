@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { grade } from '../lib/scoring';
+import { grade, isMismatch } from '../lib/scoring';
 import type { Analysis, CharResult } from '../lib/scoring';
 
 const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
@@ -35,7 +35,7 @@ function findMistakes(analysis: Analysis): Mistake[] {
   };
   pushExtras(-1);
   analysis.chars.forEach((c, i) => {
-    if (c.heard !== c.target) out.push({ kind: 'char', index: i, ...wordOf[i], heard: c.heard });
+    if (isMismatch(c)) out.push({ kind: 'char', index: i, ...wordOf[i], heard: c.heard });
     pushExtras(i);
   });
   return out;
@@ -156,7 +156,7 @@ export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapse
             {word.map((c) => {
               index++;
               const i = index;
-              const mismatch = c.heard !== c.target;
+              const mismatch = isMismatch(c);
               return (
                 <span className="tile-wrap" key={i}>
                   <button
@@ -187,7 +187,7 @@ export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapse
             <p>
               {detail.heard === null
                 ? '이 글자는 들리지 않았어요.'
-                : detail.heard === detail.target
+                : !isMismatch(detail)
                   ? `「${detail.heard}」로 정확히 들렸어요.`
                   : `「${detail.heard}」처럼 들렸어요.`}
             </p>

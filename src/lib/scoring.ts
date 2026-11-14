@@ -15,6 +15,10 @@ export interface CharResult {
   score: number;
 }
 
+// Heard as something else, or not heard. Compared through accuracy rather
+// than string equality, so "She" heard as "she" (or カ as か) is not a miss.
+export const isMismatch = (c: CharResult) => c.heard === null || c.accuracy < 1;
+
 export interface Insertion {
   // Index into `chars` of the character this extra sound follows (-1 = before the first).
   after: number;

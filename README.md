@@ -13,6 +13,8 @@ npm run build      # static output in dist/
 
 `dev:lan` caveat: Chrome disables Cache Storage on origins with certificate errors, so model saving does not work in that mode.
 
+Languages: Korean syllables get partial credit per jamo. English is compared letter by letter, case-insensitive. Japanese is compared as written, with katakana and hiragana folded together (`charSimilarity` in `src/lib/hangul.ts`), so the phrases are written the way Whisper usually transcribes them; a kanji word heard back in kana still counts as different characters.
+
 ## How scoring works
 
 Engine: [Whisper](https://huggingface.co/onnx-community) ONNX models via [transformers.js](https://github.com/huggingface/transformers.js) in a Web Worker (`src/asr/`).
