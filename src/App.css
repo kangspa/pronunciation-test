@@ -1744,3 +1744,32 @@
 .card .reading {
   margin-top: 2px;
 }
+
+/* Timing strip under the pitch chart: red = early, blue = late. */
+.pitch-chart.wide {
+  min-width: 0;
+  max-width: none;
+}
+.pitch-chart .timing-track {
+  fill: var(--surface);
+}
+.pitch-chart .timing-mark.early {
+  fill: var(--low);
+  fill-opacity: 0.45;
+}
+.pitch-chart .timing-mark.early-strong {
+  fill: var(--low);
+}
+.pitch-chart .timing-mark.late {
+  fill: var(--late);
+  fill-opacity: 0.45;
+}
+.pitch-chart .timing-mark.late-strong {
+  fill: var(--late);
+}
+.swatch.early {
+  background: var(--low);
+}
+.swatch.late {
+  background: var(--late);
+}

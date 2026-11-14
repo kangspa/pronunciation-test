@@ -15,7 +15,7 @@ import { bestOf, getSong, putSong, withBest } from '../lib/songStore';
 import type { PracticeMode, Song } from '../lib/songStore';
 import { AttemptHistory } from './AttemptHistory';
 import { ModelGate } from './ModelGate';
-import { PitchChart } from './PitchChart';
+import { PitchChart, TimingLegend } from './PitchChart';
 import { RecordControls } from './RecordControls';
 import { ResultView } from './ResultView';
 
@@ -408,7 +408,7 @@ function SongOutcome({ attempt, reference, frameSeconds }: { attempt: Attempt; r
                 초 늦거나 빨랐는지 재요. 키 설정과 상관없이 가장 잘 맞는 키로 맞춘 뒤 재요.
               </li>
               <li>
-                시작 시점 차이는 빼고 봐요. 0.15초 이내면 만점, 0.6초 이상 어긋나면 0점이고, 원곡이 소리 내는 곳에서
+                처음 3초 동안 부른 부분을 기준으로 맞추므로 언제 시작했는지는 상관없어요. 0.15초 이내면 만점, 0.6초 이상 어긋나면 0점이고, 원곡이 소리 내는 곳에서
                 소리를 내지 않았어도 0점이에요. 전체를 느리거나 빠르게 부르면 뒤로 갈수록 어긋나서 점수가 깎여요.
               </li>
               <li>
@@ -470,12 +470,19 @@ function PitchResult({
         {pitch.octaveShift !== 0 &&
           `원곡보다 ${Math.abs(pitch.octaveShift)}옥타브 ${pitch.octaveShift > 0 ? '낮게' : '높게'} 불러서 옥타브를 맞춰 비교했어요.`}
       </p>
-      <PitchChart reference={reference} frameSeconds={frameSeconds} user={pitch.alignedUser} frameScores={pitch.frameScores} />
+      <PitchChart
+        reference={reference}
+        frameSeconds={frameSeconds}
+        user={pitch.alignedUser}
+        frameScores={pitch.frameScores}
+        timingErrors={pitch.timingErrors}
+      />
       <p className="legend small">
         <span className="swatch ref" /> 원곡 보컬 <span className="swatch great" /> 정확 <span className="swatch ok" /> 조금 벗어남{' '}
         <span className="swatch low" /> 많이 벗어남
         {(shifted || pitch.octaveShift !== 0) && ' · 내 음정은 키·옥타브 차이만큼 옮겨서 겹쳐 그렸어요'}
       </p>
+      {pitch.timingErrors && <TimingLegend />}
       <details className="explain">
         <summary>음정 점수는 어떻게 계산되나요?</summary>
         <ul>

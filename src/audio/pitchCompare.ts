@@ -32,7 +32,7 @@ export interface PitchComparison {
   // octaves: the chosen shift, or the fitted one in relative mode.
   keyShift?: number;
   // 0..100. How close to the original's timing each note is sung, once the
-  // best constant offset is removed (when the user starts doesn't matter).
+  // first seconds of singing are lined up (when the user starts doesn't matter).
   // A take that is slower or faster overall drifts and loses points.
   // Measured in the best-fitting key whatever `key` is, so singing in another
   // key doesn't spoil the alignment the timing is read from.
@@ -41,6 +41,9 @@ export interface PitchComparison {
   timingErrorSeconds?: number;
   // Take length / original length between the first and last sung notes (1.1 = 10% slower).
   tempoRatio?: number;
+  // Per reference frame, how much later (+) or earlier (-) the take sings it,
+  // seconds; NaN where the reference is unvoiced or the user was silent.
+  timingErrors?: Float32Array;
 }
 
 // Within this many semitones a frame counts as fully in tune; at FAIL_SEMITONES it scores 0.
@@ -64,8 +67,10 @@ function lastIndex(x: Float32Array, pred: (v: number) => boolean): number {
 }
 
 // Timing error up to this counts as on time; at TIMING_FAIL_SECONDS a frame scores 0.
-const TIMING_OK_SECONDS = 0.15;
+export const TIMING_OK_SECONDS = 0.15;
 const TIMING_FAIL_SECONDS = 0.6;
+// The take's timing is lined up on the first this-many seconds of singing.
+const ANCHOR_SECONDS = 3;
 
 export function comparePitch(ref: PitchTrack, user: PitchTrack, key: KeySetting = { kind: 'original' }): PitchComparison {
   const fit = bestKeyFit(ref, user);
@@ -76,6 +81,7 @@ export function comparePitch(ref: PitchTrack, user: PitchTrack, key: KeySetting 
     timingScore: fit.timingScore,
     timingErrorSeconds: fit.timingErrorSeconds,
     tempoRatio: fit.tempoRatio,
+    timingErrors: fit.timingErrors,
   };
 }
 
@@ -139,12 +145,23 @@ function compareAt(ref: PitchTrack, user: PitchTrack, shift: number): PitchCompa
   }
 
   // Timing: where the path puts each sung reference frame in the take, against
-  // where it falls at the original tempo after the best constant offset (lag).
+  // where it falls at the original tempo once the first few seconds of singing
+  // are lined up. Anchoring at the start (not on the best overall offset) makes
+  // a take that drags show as later and later, rather than early-then-late.
   // Reference frames the user didn't sing score 0.
+  const anchorEnd = rFirst + Math.round(ANCHOR_SECONDS / fs);
+  const offsets: number[] = [];
+  for (let i = rFirst; i < Math.min(anchorEnd, r.length); i++) {
+    const js = matchedAt[i];
+    if (voiced(r[i]) && js.length) offsets.push(js[js.length >> 1] - i);
+  }
+  offsets.sort((a, b) => a - b);
+  const anchor = offsets.length ? offsets[offsets.length >> 1] : lag;
   let timingSum = 0;
   let timingAbsSum = 0;
   let timingMatched = 0;
   let timingFrames = 0;
+  const timingErrors = new Float32Array(r.length).fill(NaN);
   // Least-squares slope of take frame against reference frame = tempo ratio.
   let sx = 0;
   let sy = 0;
@@ -160,7 +177,8 @@ function compareAt(ref: PitchTrack, user: PitchTrack, shift: number): PitchCompa
     sy += j;
     sxx += i * i;
     sxy += i * j;
-    const err = (j - (i + lag)) * fs;
+    const err = (j - (i + anchor)) * fs;
+    timingErrors[i] = err;
     const e = Math.abs(err);
     timingSum += e <= TIMING_OK_SECONDS ? 1 : e >= TIMING_FAIL_SECONDS ? 0 : 1 - (e - TIMING_OK_SECONDS) / (TIMING_FAIL_SECONDS - TIMING_OK_SECONDS);
     timingAbsSum += e;
@@ -200,6 +218,7 @@ function compareAt(ref: PitchTrack, user: PitchTrack, shift: number): PitchCompa
     keyShift: shift,
     timingScore: timingFrames ? (timingSum / timingFrames) * 100 : 0,
     timingErrorSeconds: timingMatched ? timingAbsSum / timingMatched : 0,
+    timingErrors,
     tempoRatio: timingMatched > 1 && timingMatched * sxx - sx * sx > 0 ? (timingMatched * sxy - sx * sy) / (timingMatched * sxx - sx * sx) : 1,
   };
 }
