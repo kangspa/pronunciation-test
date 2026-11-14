@@ -1,5 +1,16 @@
 import type { PitchTrack } from './pitch';
 
+// Which key the user sings in. Whole-octave differences (e.g. a man singing a
+// woman's part) are matched automatically in every setting.
+export type KeySetting =
+  // Sung in the original key.
+  | { kind: 'original' }
+  // Sung `semitones` higher (+) or lower (-) than the original, like a karaoke key change.
+  | { kind: 'shift'; semitones: number }
+  // Any key: the best-fitting constant shift is found, so only the melody's
+  // rises and falls (relative pitch) are scored.
+  | { kind: 'relative' };
+
 export interface PitchComparison {
   // 0..100. 100 = every voiced reference frame matched within PERFECT_SEMITONES.
   score: number;
@@ -15,6 +26,21 @@ export interface PitchComparison {
   alignedUser: Float32Array;
   // Per reference frame score 0..1, NaN where the reference is unvoiced.
   frameScores: Float32Array;
+  // The rest is missing on records made before key settings and timing existed.
+  key?: KeySetting;
+  // Semitones taken off the user's pitch before comparing, on top of whole
+  // octaves: the chosen shift, or the fitted one in relative mode.
+  keyShift?: number;
+  // 0..100. How close to the original's timing each note is sung, once the
+  // best constant offset is removed (when the user starts doesn't matter).
+  // A take that is slower or faster overall drifts and loses points.
+  // Measured in the best-fitting key whatever `key` is, so singing in another
+  // key doesn't spoil the alignment the timing is read from.
+  timingScore?: number;
+  // Mean absolute timing error over sung frames, seconds.
+  timingErrorSeconds?: number;
+  // Take length / original length between the first and last sung notes (1.1 = 10% slower).
+  tempoRatio?: number;
 }
 
 // Within this many semitones a frame counts as fully in tune; at FAIL_SEMITONES it scores 0.
@@ -37,9 +63,51 @@ function lastIndex(x: Float32Array, pred: (v: number) => boolean): number {
   return -1;
 }
 
-export function comparePitch(ref: PitchTrack, user: PitchTrack): PitchComparison {
+// Timing error up to this counts as on time; at TIMING_FAIL_SECONDS a frame scores 0.
+const TIMING_OK_SECONDS = 0.15;
+const TIMING_FAIL_SECONDS = 0.6;
+
+export function comparePitch(ref: PitchTrack, user: PitchTrack, key: KeySetting = { kind: 'original' }): PitchComparison {
+  const fit = bestKeyFit(ref, user);
+  const chosen = key.kind === 'relative' ? fit : compareAt(ref, user, key.kind === 'shift' ? key.semitones : 0);
+  return {
+    ...chosen,
+    key,
+    timingScore: fit.timingScore,
+    timingErrorSeconds: fit.timingErrorSeconds,
+    tempoRatio: fit.tempoRatio,
+  };
+}
+
+// Relative pitch: try every key within an octave (octaves are searched
+// inside), then refine by the median remaining offset, which also absorbs a
+// take that is consistently a little sharp or flat.
+function bestKeyFit(ref: PitchTrack, user: PitchTrack): PitchComparison {
+  let best: PitchComparison | null = null;
+  for (let s = -5; s <= 6; s++) {
+    const c = compareAt(ref, user, s);
+    if (!best || c.score > best.score) best = c;
+  }
+  const residual = medianOffset(ref.midi, best!.alignedUser);
+  if (Math.abs(residual) > 0.05) {
+    const refined = compareAt(ref, user, best!.keyShift! + residual);
+    if (refined.score > best!.score) best = refined;
+  }
+  return best!;
+}
+
+function medianOffset(r: Float32Array, aligned: Float32Array): number {
+  const d: number[] = [];
+  for (let i = 0; i < r.length; i++) if (voiced(r[i]) && voiced(aligned[i])) d.push(aligned[i] - r[i]);
+  if (!d.length) return 0;
+  d.sort((a, b) => a - b);
+  return d[d.length >> 1];
+}
+
+// Compares with the user's pitch lowered by `shift` semitones first.
+function compareAt(ref: PitchTrack, user: PitchTrack, shift: number): PitchComparison {
   const r = ref.midi;
-  const u = user.midi;
+  const u = shift ? user.midi.map((x) => x - shift) : user.midi;
   const fs = ref.frameSeconds;
   const { lag, octave } = findOffset(r, u, Math.round(MAX_LAG_SECONDS / fs));
   const shifted = u.map((x) => x + 12 * octave);
@@ -58,11 +126,45 @@ export function comparePitch(ref: PitchTrack, user: PitchTrack): PitchComparison
 
   // Each reference frame takes the median of the user frames the path pairs it with.
   const matches: number[][] = Array.from({ length: r.length }, () => []);
-  for (const [i, j] of path) if (voiced(shifted[j])) matches[i].push(shifted[j]);
+  const matchedAt: number[][] = Array.from({ length: r.length }, () => []);
+  for (const [i, j] of path) {
+    if (!voiced(shifted[j])) continue;
+    matches[i].push(shifted[j]);
+    matchedAt[i].push(j);
+  }
   const alignedUser = new Float32Array(r.length).fill(NaN);
   for (let i = 0; i < r.length; i++) {
     const m = matches[i].sort((a, b) => a - b);
     if (m.length) alignedUser[i] = m[m.length >> 1];
+  }
+
+  // Timing: where the path puts each sung reference frame in the take, against
+  // where it falls at the original tempo after the best constant offset (lag).
+  // Reference frames the user didn't sing score 0.
+  let timingSum = 0;
+  let timingAbsSum = 0;
+  let timingMatched = 0;
+  let timingFrames = 0;
+  // Least-squares slope of take frame against reference frame = tempo ratio.
+  let sx = 0;
+  let sy = 0;
+  let sxx = 0;
+  let sxy = 0;
+  for (let i = 0; i < r.length; i++) {
+    if (!voiced(r[i])) continue;
+    timingFrames++;
+    const js = matchedAt[i];
+    if (!js.length) continue;
+    const j = js[js.length >> 1];
+    sx += i;
+    sy += j;
+    sxx += i * i;
+    sxy += i * j;
+    const err = (j - (i + lag)) * fs;
+    const e = Math.abs(err);
+    timingSum += e <= TIMING_OK_SECONDS ? 1 : e >= TIMING_FAIL_SECONDS ? 0 : 1 - (e - TIMING_OK_SECONDS) / (TIMING_FAIL_SECONDS - TIMING_OK_SECONDS);
+    timingAbsSum += e;
+    timingMatched++;
   }
 
   const frameScores = new Float32Array(r.length).fill(NaN);
@@ -95,6 +197,10 @@ export function comparePitch(ref: PitchTrack, user: PitchTrack): PitchComparison
     lagSeconds: lag * fs,
     alignedUser,
     frameScores,
+    keyShift: shift,
+    timingScore: timingFrames ? (timingSum / timingFrames) * 100 : 0,
+    timingErrorSeconds: timingMatched ? timingAbsSum / timingMatched : 0,
+    tempoRatio: timingMatched > 1 && timingMatched * sxx - sx * sx > 0 ? (timingMatched * sxy - sx * sy) / (timingMatched * sxx - sx * sx) : 1,
   };
 }
 

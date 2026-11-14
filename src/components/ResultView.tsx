@@ -93,7 +93,16 @@ function Mistakes({ mistakes, onSelect }: { mistakes: Mistake[]; onSelect: (inde
   );
 }
 
-export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapsedMs: number }) {
+export function ResultView({
+  analysis,
+  elapsedMs,
+  showScore = true,
+}: {
+  analysis: Analysis;
+  elapsedMs: number;
+  // false when a surrounding view already shows the pronunciation score.
+  showScore?: boolean;
+}) {
   const [selected, setSelected] = useState<number | null>(null);
   const g = grade(analysis.overall);
   const ring = Math.max(0, Math.min(100, analysis.overall));
@@ -109,7 +118,16 @@ export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapse
 
   return (
     <div className="result">
-      <div className="score-row">
+      {!showScore && (
+        <>
+          <h3>발음 {analysis.overall.toFixed(1)}점</h3>
+          <p className="muted small">
+            평균 정확도 {analysis.accuracy.toFixed(1)}% · 평균 신뢰도 {analysis.confidence.toFixed(1)}%
+            {analysis.insertions.length > 0 && ` · 추가로 들린 글자 ${analysis.insertions.length}개`}
+          </p>
+        </>
+      )}
+      {showScore && <div className="score-row">
         <div className={`score-ring tone-${g.tone}`} style={{ '--p': ring } as React.CSSProperties}>
           <div className="score-ring-inner">
             <strong>{analysis.overall.toFixed(1)}</strong>
@@ -136,7 +154,7 @@ export function ResultView({ analysis, elapsedMs }: { analysis: Analysis; elapse
           </dl>
           <p className="muted small">분석 {(elapsedMs / 1000).toFixed(1)}초</p>
         </div>
-      </div>
+      </div>}
 
       <div className="heard">
         <span className="label">모델이 들은 문장</span>

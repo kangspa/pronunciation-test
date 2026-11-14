@@ -1576,3 +1576,28 @@
   color: var(--accent);
 }
 
+.key-control {
+  margin: 12px 0;
+}
+.key-control label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.key-control select {
+  flex: 1;
+  max-width: 320px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+.key-control p {
+  margin: 6px 0 0;
+}
+

@@ -8,6 +8,7 @@ import { micErrorMessage, useRecorder } from '../hooks/useRecorder';
 import { newAttemptId, pronunciationSummary, songKey } from '../lib/attemptStore';
 import type { Attempt } from '../lib/attemptStore';
 import { prepareSpeech } from '../lib/recorder';
+import { KEY_OPTIONS, keyLabel, keyToValue, songScores, timingDetail, timingFormula, valueToKey } from '../lib/songScores';
 import { analyze, grade } from '../lib/scoring';
 import type { Analysis } from '../lib/scoring';
 import { bestOf, getSong, putSong, withBest } from '../lib/songStore';
@@ -128,7 +129,7 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       setLabel('음정 분석 중');
       try {
         const userPitch = await asrClient.pitch(speech.slice(), PITCH_GATE_DB, saveModels);
-        pitch = comparePitch({ midi: ref, frameSeconds: song.frameSeconds }, userPitch);
+        pitch = comparePitch({ midi: ref, frameSeconds: song.frameSeconds }, userPitch, song.key);
       } catch (err) {
         if (runMode !== 'pronunciation') throw err;
       }
@@ -137,14 +138,14 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
         const output = await asrClient.score(speech.slice(), song.lyrics, song.language, (label) => setLabel(label));
         pronunciation = analyze(song.lyrics, output);
       }
-      const score =
-        runMode === 'pitch' ? pitch!.score : runMode === 'pronunciation' ? pronunciation!.overall : (pitch!.score + pronunciation!.overall) / 2;
+      const { score, scoreWithTiming } = songScores(runMode, pronunciation, pitch);
       const attempt: Attempt = {
         id: newAttemptId(),
         item: songKey(song.id),
         createdAt: Date.now(),
         mode: runMode,
         score,
+        scoreWithTiming,
         target: song.lyrics,
         modelId: runMode !== 'pitch' && modelState.status === 'ready' ? modelState.modelId : undefined,
         analysisMs: performance.now() - t0,
@@ -154,7 +155,7 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       };
       void history.add(attempt);
 
-      const updated = withBest(song, runMode, score);
+      const updated = withBest(song, runMode, score, scoreWithTiming);
       if (updated !== song) {
         await putSong(updated).catch(() => {});
         if (recorder.isMounted()) setSong(updated);
@@ -178,6 +179,13 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
     } catch (err) {
       if (recorder.isMounted()) setPhase({ kind: 'error', message: micErrorMessage(err) });
     }
+  };
+
+  const changeKey = (value: string) => {
+    if (!song) return;
+    const updated = { ...song, key: valueToKey(value) };
+    setSong(updated);
+    void putSong(updated).catch(() => {});
   };
 
   const switchMode = (m: PracticeMode) => {
@@ -231,6 +239,7 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       <div className="mode-tabs" role="tablist" aria-label="평가 종류">
         {MODES.map((m) => {
           const best = bestOf(song, m.id);
+          const bestTiming = song.bestWithTiming?.[m.id];
           return (
             <button
               key={m.id}
@@ -242,9 +251,28 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
             >
               <span>{m.label}</span>
               <span className="mode-best">{best !== undefined ? `최고 ${best.toFixed(0)}점` : '기록 없음'}</span>
+              {bestTiming !== undefined && <span className="mode-best">타이밍 포함 {bestTiming.toFixed(0)}점</span>}
             </button>
           );
         })}
+      </div>
+
+      <div className="key-control">
+        <label>
+          <span>채점 키</span>
+          <select value={keyToValue(song.key)} onChange={(e) => changeKey(e.target.value)} disabled={busy}>
+            {KEY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="muted small">
+          노래방처럼 키를 바꿔 부른다면 맞춰 주세요. 소리를 바꾸지는 않고, 채점할 때만 그만큼 옮겨서 비교해요.
+          상대 음정은 키와 상관없이 음의 높낮이 변화만 채점해요. 남녀 차이 같은 한 옥타브 차이는 어느 설정이든
+          자동으로 맞춰요.
+        </p>
       </div>
 
       {blockedReason ? (
@@ -299,37 +327,86 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
 }
 
 function songSummary(a: Attempt): string {
-  if (a.mode === 'pronunciation') return pronunciationSummary(a.pronunciation);
-  const pitch = a.pitch ? `음정 ${a.pitch.score.toFixed(0)}점 · 50센트 이내 ${a.pitch.hitRate.toFixed(0)}%` : '';
-  if (a.mode === 'pitch' || !a.pronunciation) return pitch;
-  return `발음 ${a.pronunciation.overall.toFixed(0)}점 · ${pitch}`;
+  const parts: string[] = [];
+  if (a.scoreWithTiming !== undefined) parts.push(`타이밍 포함 ${a.scoreWithTiming.toFixed(0)}점`);
+  if (a.mode === 'pronunciation') return [...parts, pronunciationSummary(a.pronunciation)].join(' · ');
+  if (a.pronunciation) parts.push(`발음 ${a.pronunciation.overall.toFixed(0)}`);
+  if (a.pitch) parts.push(`음정 ${a.pitch.score.toFixed(0)}`);
+  if (a.pitch?.timingScore !== undefined) parts.push(`타이밍 ${a.pitch.timingScore.toFixed(0)}`);
+  return parts.join(' · ');
 }
+
+const PLAIN_FORMULA: Record<PracticeMode, string> = {
+  pronunciation: '발음 점수',
+  pitch: '음정 점수',
+  total: '(발음 + 음정) ÷ 2',
+};
 
 // Full result of one attempt; used for the attempt just made and for history entries.
 function SongOutcome({ attempt, reference, frameSeconds }: { attempt: Attempt; reference: Float32Array; frameSeconds: number }) {
   const { pitch, pronunciation } = attempt;
+  const mode = attempt.mode ?? 'total';
+  const timing = pitch?.timingScore;
+  const detail = pitch ? timingDetail(pitch) : '';
   const pitchView = pitch && (
     <PitchResult pitch={pitch} reference={reference} frameSeconds={frameSeconds} forReference={!!attempt.pitchForReference} />
   );
   return (
     <>
-      {attempt.mode === 'total' && pitch && pronunciation && (
-        <div className="result">
-          <ScoreHeader score={attempt.score} caption="종합">
+      <div className="result">
+        <ScoreHeader score={attempt.score} caption="타이밍 제외">
+          {attempt.scoreWithTiming !== undefined && (
+            <div>
+              <dt>타이밍 포함</dt>
+              <dd>{attempt.scoreWithTiming.toFixed(1)}</dd>
+            </div>
+          )}
+          {pronunciation && (
             <div>
               <dt>발음</dt>
               <dd>{pronunciation.overall.toFixed(1)}</dd>
             </div>
+          )}
+          {pitch && !attempt.pitchForReference && (
             <div>
               <dt>음정</dt>
               <dd>{pitch.score.toFixed(1)}</dd>
             </div>
-          </ScoreHeader>
-          <p className="muted small">종합 점수 = (발음 점수 + 음정 점수) ÷ 2 · 분석 {(attempt.analysisMs / 1000).toFixed(1)}초</p>
-        </div>
-      )}
+          )}
+          {timing !== undefined && (
+            <div>
+              <dt>타이밍</dt>
+              <dd>{timing.toFixed(1)}</dd>
+            </div>
+          )}
+        </ScoreHeader>
+        <p className="muted small">
+          타이밍 제외 = {PLAIN_FORMULA[mode]}
+          {attempt.scoreWithTiming !== undefined && ` · 타이밍 포함 = ${timingFormula(mode)}`}
+          {detail && ` · 타이밍: ${detail}`} · 분석 {(attempt.analysisMs / 1000).toFixed(1)}초
+        </p>
+        {timing !== undefined && (
+          <details className="explain">
+            <summary>타이밍 점수는 어떻게 계산되나요?</summary>
+            <ul>
+              <li>
+                녹음과 원곡 보컬의 음 높이·소리 나는 구간을 시간축으로 맞춰서(DTW), 원곡이 소리 내는 순간마다 내가 몇
+                초 늦거나 빨랐는지 재요. 키 설정과 상관없이 가장 잘 맞는 키로 맞춘 뒤 재요.
+              </li>
+              <li>
+                시작 시점 차이는 빼고 봐요. 0.15초 이내면 만점, 0.6초 이상 어긋나면 0점이고, 원곡이 소리 내는 곳에서
+                소리를 내지 않았어도 0점이에요. 전체를 느리거나 빠르게 부르면 뒤로 갈수록 어긋나서 점수가 깎여요.
+              </li>
+              <li>
+                글자 단위가 아니라 소리 나는 구간 단위로 맞춘 근사치예요. 반주 없이 부르면 박자가 흔들리기 쉬우니,
+                이어폰으로 원곡을 들으며 불러 보세요.
+              </li>
+            </ul>
+          </details>
+        )}
+      </div>
       {!attempt.pitchForReference && pitchView}
-      {pronunciation && <ResultView analysis={pronunciation} elapsedMs={attempt.analysisMs} />}
+      {pronunciation && <ResultView analysis={pronunciation} elapsedMs={attempt.analysisMs} showScore={false} />}
       {attempt.pitchForReference && pitchView}
     </>
   );
@@ -365,44 +442,35 @@ function PitchResult({
   // Measured alongside the pronunciation test; not part of its score.
   forReference: boolean;
 }) {
+  const shifted = Math.abs(pitch.keyShift ?? 0) >= 0.25;
   return (
     <div className="result">
-      {forReference ? (
-        <p className="muted small">
-          발음 평가라서 음정은 점수에 반영하지 않았어요. 참고로 원곡과 비교한 음정이에요 (50센트 이내{' '}
-          {pitch.hitRate.toFixed(0)}%).
-        </p>
-      ) : (
-        <ScoreHeader score={pitch.score} caption="음정">
-          <div>
-            <dt>50센트 이내</dt>
-            <dd>{pitch.hitRate.toFixed(0)}%</dd>
-          </div>
-          <div>
-            <dt>평균 음정 오차</dt>
-            <dd>
-              {pitch.meanCents > 0 ? '+' : ''}
-              {pitch.meanCents.toFixed(0)}센트
-            </dd>
-          </div>
-        </ScoreHeader>
-      )}
+      <h3>음정 비교{forReference && ' (참고용 · 발음 평가 점수에는 반영 안 됨)'}</h3>
+      <p className="muted small">
+        {!forReference && `음정 ${pitch.score.toFixed(1)}점 · `}50센트 이내 {pitch.hitRate.toFixed(0)}% · 평균 음정 오차{' '}
+        {pitch.meanCents > 0 ? '+' : ''}
+        {pitch.meanCents.toFixed(0)}센트 · {keyLabel(pitch)}
+      </p>
       <p className="muted small">
         {Math.abs(pitch.meanCents) >= 30 && (pitch.meanCents > 0 ? '전체적으로 조금 높게 불렀어요. ' : '전체적으로 조금 낮게 불렀어요. ')}
         {pitch.octaveShift !== 0 &&
           `원곡보다 ${Math.abs(pitch.octaveShift)}옥타브 ${pitch.octaveShift > 0 ? '낮게' : '높게'} 불러서 옥타브를 맞춰 비교했어요.`}
       </p>
-      <h3>음정 비교</h3>
       <PitchChart reference={reference} frameSeconds={frameSeconds} user={pitch.alignedUser} frameScores={pitch.frameScores} />
       <p className="legend small">
         <span className="swatch ref" /> 원곡 보컬 <span className="swatch great" /> 정확 <span className="swatch ok" /> 조금 벗어남{' '}
         <span className="swatch low" /> 많이 벗어남
+        {(shifted || pitch.octaveShift !== 0) && ' · 내 음정은 키·옥타브 차이만큼 옮겨서 겹쳐 그렸어요'}
       </p>
       <details className="explain">
         <summary>음정 점수는 어떻게 계산되나요?</summary>
         <ul>
           <li>원곡 보컬과 녹음에서 16ms마다 음 높이를 추출해 반음 단위로 비교해요.</li>
           <li>박자가 조금 빠르거나 느려도 따라가도록 시간축을 맞춘 뒤(DTW) 비교하고, 옥타브 차이는 자동으로 맞춰요.</li>
+          <li>
+            채점 키를 바꾸면 내 음정을 그만큼 옮겨서 비교해요. 상대 음정은 가장 잘 맞는 키를 찾아(반음보다 작은 차이까지)
+            옮긴 뒤 비교하므로, 음의 높낮이 변화만 맞으면 높은 점수가 나와요.
+          </li>
           <li>
             원곡이 소리 내는 구간마다 반음의 절반(50센트) 이내면 만점, 2반음 이상 벗어나면 0점이에요. 그 구간에 소리를 내지
             않았어도 0점이에요.

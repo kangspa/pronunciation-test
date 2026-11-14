@@ -13,8 +13,10 @@ export interface Attempt {
   createdAt: number;
   // Song attempts only; twister attempts are always pronunciation.
   mode?: PracticeMode;
-  // The score that counts for this attempt's mode, 0..100.
+  // The score that counts for this attempt's mode, 0..100, without timing.
   score: number;
+  // Song attempts: the same with the timing score averaged in (see songScores).
+  scoreWithTiming?: number;
   // Text that was scored, kept because song lyrics can be edited later.
   target: string;
   modelId?: string;

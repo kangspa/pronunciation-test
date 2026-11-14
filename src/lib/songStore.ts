@@ -1,3 +1,4 @@
+import type { KeySetting } from '../audio/pitchCompare';
 import { deleteAttemptsIn, songKey } from './attemptStore';
 import { ATTEMPTS, SONGS, tx } from './db';
 
@@ -20,8 +21,11 @@ export interface Song {
   original: Blob;
   vocals: Blob;
   best?: Partial<Record<PracticeMode, number>>;
+  bestWithTiming?: Partial<Record<PracticeMode, number>>;
   // Combined best saved before per-mode scores existed.
   bestScore?: number;
+  // Key the user sings this song in; original key when missing.
+  key?: KeySetting;
 }
 
 export type PracticeMode = 'pronunciation' | 'pitch' | 'total';
@@ -30,10 +34,16 @@ export function bestOf(song: Song, mode: PracticeMode): number | undefined {
   return song.best?.[mode] ?? (mode === 'total' ? song.bestScore : undefined);
 }
 
-export function withBest(song: Song, mode: PracticeMode, score: number): Song {
+// Returns `song` itself when neither best improved, so callers can skip saving.
+export function withBest(song: Song, mode: PracticeMode, score: number, scoreWithTiming?: number): Song {
+  let next = song;
   const prev = bestOf(song, mode);
-  if (prev !== undefined && prev >= score) return song;
-  return { ...song, best: { ...song.best, [mode]: score } };
+  if (prev === undefined || score > prev) next = { ...next, best: { ...next.best, [mode]: score } };
+  const prevTiming = song.bestWithTiming?.[mode];
+  if (scoreWithTiming !== undefined && (prevTiming === undefined || scoreWithTiming > prevTiming)) {
+    next = { ...next, bestWithTiming: { ...next.bestWithTiming, [mode]: scoreWithTiming } };
+  }
+  return next;
 }
 
 export async function listSongs(): Promise<Song[]> {
