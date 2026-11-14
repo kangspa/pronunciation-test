@@ -82,14 +82,20 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
 
   const ref = useMemo(() => (song ? new Float32Array(song.refMidi) : null), [song]);
   const urls = useMemo(
-    () => (song ? { original: URL.createObjectURL(song.original), vocals: URL.createObjectURL(song.vocals) } : null),
+    () =>
+      song
+        ? {
+            original: song.original ? URL.createObjectURL(song.original) : null,
+            vocals: song.vocals ? URL.createObjectURL(song.vocals) : null,
+          }
+        : null,
     [song],
   );
   useEffect(
     () => () => {
       if (urls) {
-        URL.revokeObjectURL(urls.original);
-        URL.revokeObjectURL(urls.vocals);
+        if (urls.original) URL.revokeObjectURL(urls.original);
+        if (urls.vocals) URL.revokeObjectURL(urls.vocals);
       }
     },
     [urls],
@@ -224,16 +230,24 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
           <span className="muted small">{(song.end - song.start).toFixed(0)}초 구간</span>
         </div>
         <p className="phrase lyrics">{song.lyrics || '(가사 없음 · 음정 평가만 할 수 있어요)'}</p>
-        <div className="players">
-          <label>
-            원곡 구간
-            <audio controls src={urls.original} />
-          </label>
-          <label>
-            보컬만
-            <audio controls src={urls.vocals} />
-          </label>
-        </div>
+        {urls.original || urls.vocals ? (
+          <div className="players">
+            {urls.original && (
+              <label>
+                원곡 구간
+                <audio controls src={urls.original} />
+              </label>
+            )}
+            {urls.vocals && (
+              <label>
+                보컬만
+                <audio controls src={urls.vocals} />
+              </label>
+            )}
+          </div>
+        ) : (
+          <p className="muted small">음원 파일은 삭제했어요. 가사, 원곡 음정, 기록으로 계속 연습할 수 있어요.</p>
+        )}
       </div>
 
       <div className="mode-tabs" role="tablist" aria-label="평가 종류">

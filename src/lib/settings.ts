@@ -37,6 +37,14 @@ export function loadBestScores(): Record<string, number> {
   }
 }
 
+export function clearBestScores() {
+  try {
+    localStorage.removeItem(BEST_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function recordBestScore(id: string, score: number): Record<string, number> {
   const best = loadBestScores();
   if (!(id in best) || score > best[id]) best[id] = score;

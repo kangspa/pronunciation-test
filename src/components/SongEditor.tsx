@@ -250,7 +250,7 @@ export function SongEditor({ modelState, saveModels }: Props) {
           {!whisperReady && (
             <p className="muted small">
               음성 인식 모델이 준비되지 않아 가사는 자동으로 인식하지 않아요. 직접 입력하거나{' '}
-              <a href="#/models">모델을 먼저 불러와</a> 주세요.
+              <a href="#/local">모델을 먼저 불러와</a> 주세요.
             </p>
           )}
           <p className="muted small">처음 분석할 때 보컬 분리·음정 모델(약 53MB)을 내려받아요.</p>

@@ -54,6 +54,15 @@ export async function listAttempts(item: string): Promise<Attempt[]> {
   return all.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export async function listAllAttempts(): Promise<Attempt[]> {
+  const all = await tx<Attempt[]>(ATTEMPTS, 'readonly', (t) => t.objectStore(ATTEMPTS).getAll() as IDBRequest<Attempt[]>);
+  return all.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function clearAttempts(): Promise<void> {
+  await tx(ATTEMPTS, 'readwrite', (t) => t.objectStore(ATTEMPTS).clear());
+}
+
 export async function deleteAttempt(id: string): Promise<void> {
   await tx(ATTEMPTS, 'readwrite', (t) => t.objectStore(ATTEMPTS).delete(id));
 }

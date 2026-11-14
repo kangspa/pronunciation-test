@@ -13,6 +13,8 @@ npm run build      # static output in dist/
 
 `dev:lan` caveat: Chrome disables Cache Storage on origins with certificate errors, so model saving does not work in that mode.
 
+The app has four tabs: **발음** (tongue twisters in Korean, English and Japanese), **노래** (song segments), **기록** (every attempt, per phrase or song, with best and recent scores) and **로컬 관리** (records, song audio, Whisper models and storage).
+
 Languages: Korean syllables get partial credit per jamo. English is compared letter by letter, case-insensitive. Japanese is compared as written, with katakana and hiragana folded together (`charSimilarity` in `src/lib/hangul.ts`), so the phrases are written the way Whisper usually transcribes them; a kanji word heard back in kana still counts as different characters.
 
 ## How scoring works
@@ -41,6 +43,8 @@ Segments are stored in IndexedDB (`src/lib/songStore.ts`): pitch track, lyrics, 
 ## Attempt history
 
 Every twister and song attempt is saved in the same IndexedDB database (`attempts` store, `src/lib/attemptStore.ts`): score, the full per-character analysis, and for songs the user pitch aligned onto the reference plus per-frame scores. No audio is kept, so an attempt is a few KB (twister) to a few tens of KB (song). Each page lists its attempts newest first; opening one redraws the full result (characters heard differently, pitch chart). Deleting a song deletes its attempts. The pronunciation-only song test also tracks pitch for the chart, without adding it to the score.
+
+로컬 관리 can delete all records (and best scores), all songs, or only the songs' audio clips: lyrics, reference pitch and records stay, and practice keeps working without the players.
 
 Browsers evict an origin's storage all at once, so records go together with any saved songs and models (Safari: after 7 days without a visit unless the site is added to the home screen).
 

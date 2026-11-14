@@ -17,7 +17,7 @@ export function ModelStatusPill({ state }: { state: ModelState }) {
     tone = 'error';
   }
   return (
-    <a className={`pill pill-${tone}`} href="#/models">
+    <a className={`pill pill-${tone}`} href="#/local">
       <span className="pill-dot" aria-hidden />
       {text}
     </a>

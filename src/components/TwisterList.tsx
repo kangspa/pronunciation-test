@@ -46,7 +46,7 @@ export function TwisterList({ best, modelState }: Props) {
           알려줘요.
         </p>
         {modelState.status !== 'ready' && modelState.status !== 'loading' && (
-          <a className="button button-primary" href="#/models">
+          <a className="button button-primary" href="#/local">
             먼저 음성 인식 모델 준비하기
           </a>
         )}

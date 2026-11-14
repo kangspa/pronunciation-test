@@ -34,7 +34,7 @@ export function ModelGate({ modelState, selectedModelId, onLoadModel, reason }: 
             {preset.label} 불러오기 (약 {preset.sizeMB}MB)
           </button>
         )}
-        <a className="button" href="#/models">
+        <a className="button" href="#/local">
           다른 모델 고르기
         </a>
       </div>

@@ -1548,9 +1548,24 @@
 .history-more {
   margin-top: 10px;
 }
+
 /* Japanese phrases have no spaces, so a single "word" can be wider than a phone. */
 .word {
   flex-wrap: wrap;
+}
+
+/* Four tabs don't fit beside the brand and model pill on a phone: own row. */
+@media (max-width: 520px) {
+  .nav {
+    order: 3;
+    width: 100%;
+    margin: 0;
+  }
+  .nav a {
+    flex: 1;
+    text-align: center;
+    padding: 6px 4px;
+  }
 }
 
 .filter-chips {
@@ -1601,3 +1616,120 @@
   margin: 6px 0 0;
 }
 
+.record-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.record-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.record-stats strong {
+  font-size: 1.5rem;
+}
+.record-stats span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.record-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.record-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.record-head .tag {
+  margin-right: 0;
+}
+.record-when {
+  margin-left: auto;
+}
+.record-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.record-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.9rem;
+}
+.sparkline {
+  flex: none;
+  width: 120px;
+  height: 32px;
+}
+.sparkline path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.sparkline circle {
+  fill: var(--accent);
+}
+.tone-text-great {
+  color: var(--great);
+}
+.tone-text-good {
+  color: var(--good);
+}
+.tone-text-ok {
+  color: var(--ok);
+}
+.tone-text-low {
+  color: var(--low);
+}
+
+.data-box h2,
+.models h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+.data-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.data-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.data-list li > span {
+  min-width: 0;
+}
+.data-list .muted {
+  display: block;
+}
+.button-small {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  flex: none;
+}
+.danger-outline {
+  color: var(--low);
+  border-color: var(--low);
+}
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

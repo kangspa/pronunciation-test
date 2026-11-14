@@ -96,10 +96,7 @@ export function ModelManager({ settings, modelState, onLoad, onChangeSettings }:
 
   return (
     <section className="models">
-      <a className="back" href="#/">
-        ← 목록
-      </a>
-      <h1>음성 인식 모델</h1>
+      <h2>음성 인식 모델</h2>
       <p className="muted">
         모델은 Hugging Face에서 한 번 내려받아 이 브라우저 안에서만 실행돼요. 저장해 두면 다음 방문부터는 다운로드 없이
         바로 쓸 수 있어요.

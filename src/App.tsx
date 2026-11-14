@@ -4,8 +4,9 @@ import { asrClient } from './asr/asrClient';
 import { findPreset } from './asr/models';
 import { inspectCache, requestPersistence } from './asr/modelStore';
 import { useModelState } from './asr/useModelState';
-import { ModelManager } from './components/ModelManager';
+import { LocalPage } from './components/LocalPage';
 import { ModelStatusPill } from './components/ModelStatusPill';
+import { RecordsPage } from './components/RecordsPage';
 import { SongEditor } from './components/SongEditor';
 import { SongList } from './components/SongList';
 import { SongPractice } from './components/SongPractice';
@@ -18,7 +19,8 @@ import type { Settings } from './lib/settings';
 type Route =
   | { page: 'home' }
   | { page: 'twister'; id: string }
-  | { page: 'models' }
+  | { page: 'records' }
+  | { page: 'local' }
   | { page: 'songs' }
   | { page: 'song-new' }
   | { page: 'song'; id: string };
@@ -29,7 +31,9 @@ function parseHash(): Route {
   if (page === 't' && id) return { page: 'twister', id: decodeURIComponent(id) };
   if (page === 's' && id) return { page: 'song', id: decodeURIComponent(id) };
   if (page === 'songs') return id === 'new' ? { page: 'song-new' } : { page: 'songs' };
-  if (page === 'models') return { page: 'models' };
+  if (page === 'records') return { page: 'records' };
+  // '#/models' is the old address of the model page, now part of 로컬 관리.
+  if (page === 'local' || page === 'models') return { page: 'local' };
   return { page: 'home' };
 }
 
@@ -97,24 +101,32 @@ function App() {
         </a>
         <nav className="nav">
           <a href="#/" className={route.page === 'home' || route.page === 'twister' ? 'active' : ''}>
-            잰말놀이
+            발음
           </a>
           <a href="#/songs" className={route.page.startsWith('song') ? 'active' : ''}>
             노래
+          </a>
+          <a href="#/records" className={route.page === 'records' ? 'active' : ''}>
+            기록
+          </a>
+          <a href="#/local" className={route.page === 'local' ? 'active' : ''}>
+            로컬 관리
           </a>
         </nav>
         <ModelStatusPill state={modelState} />
       </header>
 
       <main className="content">
-        {route.page === 'models' && (
-          <ModelManager
+        {route.page === 'local' && (
+          <LocalPage
             settings={settings}
             modelState={modelState}
             onLoad={loadModel}
             onChangeSettings={updateSettings}
+            onBestReset={() => setBest({})}
           />
         )}
+        {route.page === 'records' && <RecordsPage />}
         {route.page === 'home' && <TwisterList best={best} modelState={modelState} />}
         {route.page === 'songs' && <SongList />}
         {route.page === 'song-new' && <SongEditor modelState={modelState} saveModels={settings.saveModels} />}

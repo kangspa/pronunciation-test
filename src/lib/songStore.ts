@@ -18,8 +18,11 @@ export interface Song {
   // Reference MIDI pitch per frame (Float32Array buffer), NaN = unvoiced.
   refMidi: ArrayBuffer;
   frameSeconds: number;
-  original: Blob;
-  vocals: Blob;
+  // Audio clips of the segment. Missing once removed in 로컬 관리 to free
+  // space; lyrics, reference pitch and records stay usable without them.
+  original?: Blob;
+  vocals?: Blob;
+  // Best scores without timing.
   best?: Partial<Record<PracticeMode, number>>;
   bestWithTiming?: Partial<Record<PracticeMode, number>>;
   // Combined best saved before per-mode scores existed.
@@ -65,6 +68,49 @@ export async function deleteSong(id: string): Promise<void> {
   await tx([SONGS, ATTEMPTS], 'readwrite', (t) => {
     t.objectStore(SONGS).delete(id);
     deleteAttemptsIn(t, songKey(id));
+  });
+}
+
+// Drops the audio clips of every song, keeping everything else.
+export async function removeAllSongAudio(): Promise<void> {
+  const songs = await listSongs();
+  await tx(SONGS, 'readwrite', (t) => {
+    const store = t.objectStore(SONGS);
+    for (const s of songs) {
+      if (!s.original && !s.vocals) continue;
+      const rest = { ...s };
+      delete rest.original;
+      delete rest.vocals;
+      store.put(rest);
+    }
+  });
+}
+
+// Clears every song's best scores (used when all records are deleted).
+export async function clearSongBests(): Promise<void> {
+  const songs = await listSongs();
+  await tx(SONGS, 'readwrite', (t) => {
+    const store = t.objectStore(SONGS);
+    for (const s of songs) {
+      const rest = { ...s };
+      delete rest.best;
+      delete rest.bestWithTiming;
+      delete rest.bestScore;
+      store.put(rest);
+    }
+  });
+}
+
+// Deletes every song and every song attempt.
+export async function deleteAllSongs(): Promise<void> {
+  await tx([SONGS, ATTEMPTS], 'readwrite', (t) => {
+    t.objectStore(SONGS).clear();
+    const attempts = t.objectStore(ATTEMPTS);
+    // Primary keys of the attempts whose item is any song (songKey prefix).
+    const req = attempts.index('item').getAllKeys(IDBKeyRange.bound('s:', 's:\uffff'));
+    req.onsuccess = () => {
+      for (const key of req.result) attempts.delete(key);
+    };
   });
 }
 
