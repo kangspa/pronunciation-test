@@ -98,7 +98,7 @@ export async function startRecording(): Promise<ActiveRecording> {
   };
 }
 
-async function decodeTo16k(blob: Blob): Promise<Float32Array> {
+export async function decodeTo16k(blob: Blob): Promise<Float32Array> {
   const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
   try {
     const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());

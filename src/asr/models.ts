@@ -10,6 +10,9 @@ export interface ModelPreset {
   sizeMB: number;
   description: string;
   recommended?: boolean;
+  // Exported with cross-attention outputs, so Whisper can report when each
+  // token was spoken (word timing). Optional: everything else works without.
+  timestamps?: boolean;
 }
 
 // Sizes measured from the Hugging Face repos (onnx/ folder + tokenizer files).
@@ -41,6 +44,26 @@ export const MODEL_PRESETS: ModelPreset[] = [
     sizeMB: 253,
     description: '한국어 정확도와 속도의 균형이 좋아요. 대부분의 기기에서 동작합니다.',
     recommended: true,
+  },
+  {
+    id: 'whisper-base-timestamped',
+    label: 'Whisper Base + 단어 타이밍',
+    repo: 'onnx-community/whisper-base_timestamped',
+    device: 'wasm',
+    dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' },
+    sizeMB: 80,
+    description: 'Base에 단어 타이밍을 더한 모델이에요. 노래에서 가사 글자마다 빨랐는지 늦었는지 보여줘요.',
+    timestamps: true,
+  },
+  {
+    id: 'whisper-small-timestamped',
+    label: 'Whisper Small + 단어 타이밍',
+    repo: 'onnx-community/whisper-small_timestamped',
+    device: 'wasm',
+    dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' },
+    sizeMB: 252,
+    description: 'Small과 같은 정확도에 단어 타이밍을 더했어요. 노래 가사 글자별 빠름·늦음 표시에 써요.',
+    timestamps: true,
   },
   {
     id: 'whisper-large-v3-turbo',

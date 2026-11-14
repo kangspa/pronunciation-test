@@ -11,6 +11,9 @@ export interface CharResult {
   // 0..1, model's probability that the target character was spoken.
   confidence: number;
   heardConfidence: number | null;
+  // When the heard character was spoken, seconds into the audio; only with a
+  // word-timing model (missing on older records).
+  heardTime?: number | null;
   // accuracy * confidence
   score: number;
 }
@@ -65,6 +68,7 @@ export function analyze(targetText: string, output: ScoreOutput): Analysis {
       c.heard = heardChars[op.h];
       c.accuracy = op.similarity;
       c.heardConfidence = output.heard[op.h].prob;
+      c.heardTime = output.heard[op.h].time ?? null;
       lastTarget = op.t;
     } else if (op.kind === 'delete') {
       lastTarget = op.t;

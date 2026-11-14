@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { asrClient } from '../asr/asrClient';
+import { findPreset } from '../asr/models';
 import type { ModelState } from '../asr/asrClient';
 import { comparePitch } from '../audio/pitchCompare';
 import type { PitchComparison } from '../audio/pitchCompare';
@@ -7,7 +8,8 @@ import { useAttempts } from '../hooks/useAttempts';
 import { micErrorMessage, useRecorder } from '../hooks/useRecorder';
 import { newAttemptId, pronunciationSummary, songKey } from '../lib/attemptStore';
 import type { Attempt } from '../lib/attemptStore';
-import { prepareSpeech } from '../lib/recorder';
+import { compareCharTimes } from '../lib/charTiming';
+import { decodeTo16k, prepareSpeech } from '../lib/recorder';
 import { KEY_OPTIONS, keyLabel, keyToValue, songScores, timingDetail, timingFormula, valueToKey } from '../lib/songScores';
 import { analyze, grade } from '../lib/scoring';
 import type { Analysis } from '../lib/scoring';
@@ -139,10 +141,27 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       } catch (err) {
         if (runMode !== 'pronunciation') throw err;
       }
+      let charTiming: number[] | undefined;
+      let songNow = song;
       if (runMode !== 'pitch') {
         setLabel('발음 분석 중');
         const output = await asrClient.score(speech.slice(), song.lyrics, song.language, (label) => setLabel(label));
         pronunciation = analyze(song.lyrics, output);
+
+        // A word-timing model also says when each lyric character was sung;
+        // the original's times come from its vocals, once per lyrics + model.
+        const modelId = modelState.status === 'ready' ? modelState.modelId : '';
+        if (findPreset(modelId)?.timestamps) {
+          let ref = song.refCharTimes?.lyrics === song.lyrics && song.refCharTimes.modelId === modelId ? song.refCharTimes.times : null;
+          if (!ref && song.vocals) {
+            setLabel('원곡 가사 타이밍 분석 중');
+            const vocals16k = await decodeTo16k(song.vocals);
+            const refOut = await asrClient.score(vocals16k, song.lyrics, song.language);
+            ref = analyze(song.lyrics, refOut).chars.map((c) => c.heardTime ?? null);
+            songNow = { ...songNow, refCharTimes: { lyrics: song.lyrics, modelId, times: ref } };
+          }
+          if (ref) charTiming = compareCharTimes(ref, pronunciation.chars.map((c) => c.heardTime ?? null));
+        }
       }
       const { score, scoreWithTiming } = songScores(runMode, pronunciation, pitch);
       const attempt: Attempt = {
@@ -158,10 +177,11 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
         pronunciation,
         pitch,
         pitchForReference: runMode === 'pronunciation' && pitch ? true : undefined,
+        charTiming,
       };
       void history.add(attempt);
 
-      const updated = withBest(song, runMode, score, scoreWithTiming);
+      const updated = withBest(songNow, runMode, score, scoreWithTiming);
       if (updated !== song) {
         await putSong(updated).catch(() => {});
         if (recorder.isMounted()) setSong(updated);
@@ -412,15 +432,22 @@ function SongOutcome({ attempt, reference, frameSeconds }: { attempt: Attempt; r
                 소리를 내지 않았어도 0점이에요. 전체를 느리거나 빠르게 부르면 뒤로 갈수록 어긋나서 점수가 깎여요.
               </li>
               <li>
-                글자 단위가 아니라 소리 나는 구간 단위로 맞춘 근사치예요. 반주 없이 부르면 박자가 흔들리기 쉬우니,
-                이어폰으로 원곡을 들으며 불러 보세요.
+                타이밍 점수는 글자 단위가 아니라 소리 나는 구간 단위로 맞춘 근사치예요. 반주 없이 부르면 박자가
+                흔들리기 쉬우니, 이어폰으로 원곡을 들으며 불러 보세요.
+              </li>
+              <li>
+                {attempt.charTiming
+                  ? '가사 글자 아래 빨강·파랑 줄은 단어 타이밍 모델로 잰 글자별 빠름·늦음이에요.'
+                  : '로컬 관리에서 「단어 타이밍」 모델을 쓰면 가사 글자마다 빨랐는지 늦었는지도 표시돼요. (선택, 추가 다운로드)'}
               </li>
             </ul>
           </details>
         )}
       </div>
       {!attempt.pitchForReference && pitchView}
-      {pronunciation && <ResultView analysis={pronunciation} elapsedMs={attempt.analysisMs} showScore={false} />}
+      {pronunciation && (
+        <ResultView analysis={pronunciation} elapsedMs={attempt.analysisMs} showScore={false} charTiming={attempt.charTiming} />
+      )}
       {attempt.pitchForReference && pitchView}
     </>
   );

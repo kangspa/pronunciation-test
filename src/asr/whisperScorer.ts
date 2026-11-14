@@ -59,6 +59,9 @@ export function splitTargetByChunk(
 export interface CharProb {
   char: string;
   prob: number;
+  // When the character was spoken, seconds from the start of the scored
+  // audio. Only from a word-timing model, and only for heard characters.
+  time?: number;
 }
 
 export interface ScoreOutput {
@@ -114,11 +117,13 @@ export class WhisperScorer {
   private readonly groupOf: number[][];
   private readonly utf8 = new TextDecoder('utf-8');
   private readonly featurize: Featurize;
+  private readonly timestamps: boolean;
 
-  constructor(model: WhisperForConditionalGeneration, tokenizer: PreTrainedTokenizer, featurize: Featurize) {
+  constructor(model: WhisperForConditionalGeneration, tokenizer: PreTrainedTokenizer, featurize: Featurize, timestamps = false) {
     this.model = model;
     this.tokenizer = tokenizer;
     this.featurize = featurize;
+    this.timestamps = timestamps;
     const genConfig = model.generation_config as unknown as { eos_token_id: number };
     this.eot = genConfig.eos_token_id;
 
@@ -164,8 +169,9 @@ export class WhisperScorer {
     return encoder_outputs;
   }
 
-  // Free decoding. Returns the prompt tokens and the transcribed text tokens.
-  private async decode(inputFeatures: Tensor, encoderOutputs: Tensor, language: string) {
+  // Free decoding. Returns the prompt tokens, the transcribed text tokens and,
+  // with a word-timing model, when each of those tokens starts (seconds into the window).
+  private async decode(inputFeatures: Tensor, encoderOutputs: Tensor, language: string, samples: number) {
     // generate() skips the encoder when encoder_outputs is passed in.
     const generated = (await this.model.generate({
       inputs: inputFeatures,
@@ -173,14 +179,28 @@ export class WhisperScorer {
       language,
       task: 'transcribe',
       max_new_tokens: 160,
-    } as unknown as Parameters<WhisperForConditionalGeneration['generate']>[0])) as Tensor;
-    const ids = (generated.tolist()[0] as (number | bigint)[]).map(Number);
+      // Cross-attention alignment over the audio actually present (20 ms per encoder frame).
+      ...(this.timestamps ? { return_token_timestamps: true, num_frames: Math.ceil(samples / 320) } : {}),
+    } as unknown as Parameters<WhisperForConditionalGeneration['generate']>[0])) as
+      | Tensor
+      | { sequences: Tensor; token_timestamps?: Tensor };
+    const sequences = generated instanceof Tensor ? generated : generated.sequences;
+    const ids = (sequences.tolist()[0] as (number | bigint)[]).map(Number);
     // Prompt = leading special tokens (<|startoftranscript|><|ko|><|transcribe|><|notimestamps|>).
     let p = 0;
     while (p < ids.length && ids[p] >= this.eot) p++;
     const heardIds: number[] = [];
     for (let i = p; i < ids.length && ids[i] < this.eot; i++) heardIds.push(ids[i]);
-    return { prompt: ids.slice(0, p), heardIds };
+
+    let heardTimes: number[] | undefined;
+    const stamps = generated instanceof Tensor ? undefined : generated.token_timestamps;
+    if (stamps) {
+      const t = (stamps.tolist()[0] as number[]).map(Number);
+      // One time per sequence token; if the prompt is left out, align from the end.
+      const shift = t.length >= ids.length ? 0 : ids.length - t.length;
+      heardTimes = heardIds.map((_, k) => t[p + k - shift] ?? NaN);
+    }
+    return { prompt: ids.slice(0, p), heardIds, heardTimes };
   }
 
   // Audio of any length; longer than one Whisper window is transcribed piecewise.
@@ -191,7 +211,7 @@ export class WhisperScorer {
       onChunk?.(k, chunks.length);
       const features = await this.featurize(audio16k.subarray(s, e));
       const encoderOutputs = await this.encode(features);
-      const { heardIds } = await this.decode(features, encoderOutputs, language);
+      const { heardIds } = await this.decode(features, encoderOutputs, language, e - s);
       parts.push(this.tokenizer.decode(heardIds, { skip_special_tokens: true }).trim());
     }
     return parts.filter(Boolean).join(' ');
@@ -204,7 +224,7 @@ export class WhisperScorer {
   async score(audio16k: Float32Array, targetText: string, language: string, onChunk?: ChunkProgress): Promise<ScoreOutput> {
     const t0 = performance.now();
     const chunks = splitAtPauses(audio16k, 16000);
-    const windows: { encoderOutputs: Tensor; prompt: number[]; heardIds: number[] }[] = [];
+    const windows: { encoderOutputs: Tensor; prompt: number[]; heardIds: number[]; heardTimes?: number[]; startSeconds: number }[] = [];
     let encodeMs = 0;
     for (const [k, [s, e]] of chunks.entries()) {
       onChunk?.(k, chunks.length);
@@ -212,7 +232,7 @@ export class WhisperScorer {
       const features = await this.featurize(audio16k.subarray(s, e));
       const encoderOutputs = await this.encode(features);
       encodeMs += performance.now() - ts;
-      windows.push({ encoderOutputs, ...(await this.decode(features, encoderOutputs, language)) });
+      windows.push({ encoderOutputs, startSeconds: s / 16000, ...(await this.decode(features, encoderOutputs, language, e - s)) });
     }
     const t2 = performance.now();
 
@@ -220,7 +240,8 @@ export class WhisperScorer {
     const heardChunk: number[] = [];
     for (const [k, w] of windows.entries()) {
       const probs = w.heardIds.length ? await this.tokenProbs(w.encoderOutputs, w.prompt, w.heardIds) : [];
-      for (const c of this.charProbs(w.heardIds, probs)) {
+      const times = w.heardTimes?.map((t) => t + w.startSeconds);
+      for (const c of this.charProbs(w.heardIds, probs, times)) {
         heard.push(c);
         heardChunk.push(k);
       }
@@ -280,7 +301,7 @@ export class WhisperScorer {
   // Byte-level tokens don't line up with characters: one Hangul syllable can
   // span two tokens, and one token can hold several syllables. A character's
   // probability is the product over the tokens its bytes come from.
-  private charProbs(tokens: number[], probs: number[]): CharProb[] {
+  private charProbs(tokens: number[], probs: number[], times?: number[]): CharProb[] {
     const bytes: number[] = [];
     const owner: number[] = [];
     tokens.forEach((t, i) => {
@@ -298,7 +319,8 @@ export class WhisperScorer {
       const owners = new Set(owner.slice(i, i + len));
       let prob = 1;
       for (const o of owners) prob *= probs[o];
-      if (!NON_CONTENT_CHAR.test(char)) chars.push({ char, prob });
+      const time = times?.[owner[i]];
+      if (!NON_CONTENT_CHAR.test(char)) chars.push(time !== undefined && Number.isFinite(time) ? { char, prob, time } : { char, prob });
       i += len;
     }
     return chars;

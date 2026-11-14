@@ -101,6 +101,10 @@ export function ModelManager({ settings, modelState, onLoad, onChangeSettings }:
         모델은 Hugging Face에서 한 번 내려받아 이 브라우저 안에서만 실행돼요. 저장해 두면 다음 방문부터는 다운로드 없이
         바로 쓸 수 있어요.
       </p>
+      <p className="muted small">
+        「단어 타이밍」 모델은 선택 사항이에요. 같은 크기의 일반 모델 대신 불러오면 발음 채점은 똑같이 하면서, 노래에서
+        가사 글자마다 원곡보다 빨랐는지 늦었는지도 보여줘요. 받지 않아도 다른 기능은 모두 그대로 쓸 수 있어요.
+      </p>
 
       <div className="settings-box">
         <label className="switch">
@@ -158,6 +162,7 @@ export function ModelManager({ settings, modelState, onLoad, onChangeSettings }:
                   {p.recommended && <span className="tag tag-accent">추천</span>}
                   <span className="tag">{p.device === 'webgpu' ? 'WebGPU' : 'CPU (WASM)'}</span>
                   <span className="tag">약 {p.sizeMB}MB</span>
+                  {p.timestamps && <span className="tag tag-accent">단어 타이밍 · 선택</span>}
                 </div>
                 <p className="muted small">{p.description}</p>
                 <p className="small">

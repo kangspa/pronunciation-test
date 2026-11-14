@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { charTimingClass, charTimingText } from '../lib/charTiming';
 import { grade, isMismatch } from '../lib/scoring';
 import type { Analysis, CharResult } from '../lib/scoring';
 
@@ -97,11 +98,14 @@ export function ResultView({
   analysis,
   elapsedMs,
   showScore = true,
+  charTiming,
 }: {
   analysis: Analysis;
   elapsedMs: number;
   // false when a surrounding view already shows the pronunciation score.
   showScore?: boolean;
+  // Signed seconds per target character versus the original (+ = late); songs with a word-timing model.
+  charTiming?: number[];
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const g = grade(analysis.overall);
@@ -175,10 +179,11 @@ export function ResultView({
               index++;
               const i = index;
               const mismatch = isMismatch(c);
+              const timing = charTimingClass(charTiming?.[i]);
               return (
                 <span className="tile-wrap" key={i}>
                   <button
-                    className={`tile tone-${tone(c.score)} ${selected === i ? 'selected' : ''}`}
+                    className={`tile tone-${tone(c.score)} ${selected === i ? 'selected' : ''} ${timing ? `timing-${timing}` : ''}`}
                     onClick={() => setSelected(selected === i ? null : i)}
                     title={`정확도 ${pct(c.accuracy)} · 신뢰도 ${pct(c.confidence)}`}
                   >
@@ -197,6 +202,12 @@ export function ResultView({
           </div>
         ))}
       </div>
+      {charTiming && (
+        <p className="legend small">
+          글자 아래 줄: <span className="swatch early" /> 원곡보다 빨리 <span className="swatch late" /> 원곡보다 늦게 (0.25초 넘게
+          어긋난 글자, 진할수록 0.5초 이상)
+        </p>
+      )}
 
       {detail ? (
         <div className="detail">
@@ -213,6 +224,9 @@ export function ResultView({
               정확도 {pct(detail.accuracy)} × 신뢰도 {pct(detail.confidence)} = 점수 {pct(detail.score)}
               {detail.heardConfidence !== null && ` · 들린 글자 확신도 ${pct(detail.heardConfidence)}`}
             </p>
+            {selected !== null && charTimingText(charTiming?.[selected]) && (
+              <p className="small">{charTimingText(charTiming?.[selected])}</p>
+            )}
           </div>
         </div>
       ) : (

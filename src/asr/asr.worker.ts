@@ -73,7 +73,7 @@ async function load(req: Extract<WorkerRequest, { type: 'load' }>) {
       progress_callback,
     } as Parameters<typeof WhisperForConditionalGeneration.from_pretrained>[1])) as WhisperForConditionalGeneration;
     const proc = processor;
-    scorer = new WhisperScorer(model, processor.tokenizer!, async (audio) => (await proc(audio)).input_features);
+    scorer = new WhisperScorer(model, processor.tokenizer!, async (audio) => (await proc(audio)).input_features, !!preset.timestamps);
     post({ type: 'ready', modelId: preset.id, device: preset.device });
   } catch (err) {
     model = null;

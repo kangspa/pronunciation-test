@@ -25,6 +25,8 @@ export interface Attempt {
   pitch?: PitchComparison;
   // Pitch was measured for display only and is not part of `score`.
   pitchForReference?: boolean;
+  // Signed seconds per lyric character versus the original (word-timing model only).
+  charTiming?: number[];
 }
 
 // One line for a history row: what was heard and how many places differed.

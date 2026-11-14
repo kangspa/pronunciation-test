@@ -1773,3 +1773,20 @@
 .swatch.late {
   background: var(--late);
 }
+
+/* Per-character timing (word-timing model): a bar under the tile. */
+.tile[class*='timing-'] {
+  box-shadow: inset 0 -4px 0 var(--timing-color);
+}
+.tile.timing-early {
+  --timing-color: color-mix(in srgb, var(--low) 50%, transparent);
+}
+.tile.timing-early-strong {
+  --timing-color: var(--low);
+}
+.tile.timing-late {
+  --timing-color: color-mix(in srgb, var(--late) 50%, transparent);
+}
+.tile.timing-late-strong {
+  --timing-color: var(--late);
+}

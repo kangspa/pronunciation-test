@@ -29,6 +29,9 @@ export interface Song {
   bestScore?: number;
   // Key the user sings this song in; original key when missing.
   key?: KeySetting;
+  // When each lyric character is sung in the original vocals, from a
+  // word-timing model; recomputed when the lyrics or the model change.
+  refCharTimes?: { lyrics: string; modelId: string; times: (number | null)[] };
 }
 
 export type PracticeMode = 'pronunciation' | 'pitch' | 'total';

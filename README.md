@@ -71,7 +71,11 @@ Limits: pitch is compared to the original singer, so a different key (other than
 | Whisper Tiny | WASM, q8 | ~45 MB |
 | Whisper Base | WASM, q8 | ~81 MB |
 | **Whisper Small** (default) | WASM, q8 | ~253 MB |
+| Whisper Base + 단어 타이밍 | WASM, q8 | ~80 MB |
+| Whisper Small + 단어 타이밍 | WASM, q8 | ~252 MB |
 | Whisper Large v3 Turbo | WebGPU, q4f16 (experimental, untested) | ~568 MB |
+
+The 단어 타이밍 presets are the `onnx-community/*_timestamped` exports, which also output cross-attentions. They are optional: loaded instead of the plain model of the same size, scoring is unchanged and `generate` additionally returns per-token times (`return_token_timestamps`, `num_frames` = encoder frames actually present). Each heard character gets the time of its first token, and target characters inherit it through the alignment (`CharResult.heardTime`). In song practice the original's times come from scoring its stored vocals once per lyrics and model (`Song.refCharTimes`); the difference per character, lined up on the first five timed characters, colours the tiles red (early) or blue (late) beyond 0.25 s (`src/lib/charTiming.ts`). On two Korean TTS readings of the same sentence (normal and slow), whisper-base_timestamped loaded in 6.6 s and gave monotonic per-character times that stretched with the slower reading (e.g. 된 at 3.22 s vs 4.96 s).
 
 Song mode adds Spleeter vocals + accompaniment (int8, 26 MB each) and SwiftF0 (0.4 MB), downloaded on first analysis into a separate `audio-models-cache` bucket.
 
