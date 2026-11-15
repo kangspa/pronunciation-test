@@ -1941,6 +1941,26 @@
   text-align: center;
 }
 
+/* Pitch chart with an overlay (live playhead) on exactly the same box. */
+.chart-stack {
+  position: relative;
+  min-width: 600px;
+}
+.chart-stack .pitch-chart {
+  min-width: 0;
+}
+.chart-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.chart-overlay .playhead {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
 /* Two pitch scores (absolute / relative) side by side. */
 .pitch-pair {
   display: grid;
@@ -1967,4 +1987,36 @@
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--muted);
+}
+
+/* Live karaoke guide while recording. */
+.live-guide {
+  margin: 12px 0;
+}
+.live-lyrics {
+  margin: 0 0 10px;
+  font-size: clamp(1.2rem, 4.5vw, 1.6rem);
+  font-weight: 700;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+.live-lyrics .next {
+  display: block;
+  font-size: 0.75em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.live-lyrics .sung {
+  color: var(--accent);
+}
+.live-lyrics .now {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+}
+
+/* The live guide's chart fits the screen, so the playhead never runs off a
+   phone screen into the scrolled-away part. */
+.live-guide .chart-stack {
+  min-width: 0;
 }

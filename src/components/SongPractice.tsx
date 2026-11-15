@@ -9,6 +9,7 @@ import { micErrorMessage, useRecorder } from '../hooks/useRecorder';
 import { newAttemptId, pronunciationSummary, songKey } from '../lib/attemptStore';
 import type { Attempt } from '../lib/attemptStore';
 import { compareCharTimes } from '../lib/charTiming';
+import { estimateCharTimes } from '../lib/lyricsTiming';
 import { decodeTo16k, prepareSpeech } from '../lib/recorder';
 import { KEY_OPTIONS, keyToValue, songScores, timingDetail, timingFormula, valueToKey } from '../lib/songScores';
 import { analyze } from '../lib/scoring';
@@ -18,7 +19,7 @@ import type { PracticeMode, Song } from '../lib/songStore';
 import { AttemptHistory } from './AttemptHistory';
 import { ScoreHeader } from './ScoreHeader';
 import { ModelGate } from './ModelGate';
-import { PitchChart } from './PitchChart';
+import { LiveGuide } from './LiveGuide';
 import { PitchResult } from './PitchResult';
 import { RecordControls } from './RecordControls';
 import { ResultView } from './ResultView';
@@ -44,6 +45,23 @@ const MODES: { id: PracticeMode; label: string; hint: string }[] = [
 ];
 
 const MODE_KEY = 'pronunciation-test:song-mode';
+const PLAY_ALONG_KEY = 'pronunciation-test:play-along';
+
+function loadPlayAlong(): boolean {
+  try {
+    return localStorage.getItem(PLAY_ALONG_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function savePlayAlong(on: boolean) {
+  try {
+    localStorage.setItem(PLAY_ALONG_KEY, on ? '1' : '0');
+  } catch {
+    // Not persisted; the choice still applies for this visit.
+  }
+}
 const PITCH_GATE_DB = 30;
 
 function loadMode(): PracticeMode {
@@ -108,6 +126,23 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
     if (audioUrl) URL.revokeObjectURL(audioUrl);
   }, [audioUrl]);
 
+  // Lyric timing for the live guide: measured by a word-timing model when the
+  // song has it for these lyrics, otherwise estimated from the reference pitch.
+  const guideTimes = useMemo(() => {
+    if (!song || !ref) return { times: [] as (number | null)[], measured: false };
+    if (song.refCharTimes?.lyrics === song.lyrics) return { times: song.refCharTimes.times, measured: true };
+    return { times: estimateCharTimes(ref, song.frameSeconds, song.lyrics), measured: false };
+  }, [song, ref]);
+
+  // "원곡 같이 틀기": the original segment plays from the start of each recording.
+  const [playAlong, setPlayAlong] = useState(loadPlayAlong);
+  const playerRef = useRef<HTMLAudioElement | null>(null);
+  const stopPlayAlong = () => {
+    playerRef.current?.pause();
+    playerRef.current = null;
+  };
+  useEffect(() => () => stopPlayAlong(), []);
+
   const whisperReady = modelState.status === 'ready';
   const hasLyrics = !!song?.lyrics;
   const needsWhisper = mode !== 'pitch';
@@ -121,6 +156,7 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       if (recorder.isMounted()) setPhase({ kind: 'analyzing', label });
     };
     setLabel('녹음 정리 중');
+    stopPlayAlong();
     try {
       const recording = await recorder.stop();
       if (!recording) return;
@@ -203,7 +239,16 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
 
   const start = async () => {
     try {
-      if (await recorder.start()) setPhase({ kind: 'idle' });
+      if (await recorder.start()) {
+        setPhase({ kind: 'idle' });
+        document.querySelector('.live-guide')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const src = urls?.original ?? urls?.vocals;
+        if (playAlong && src) {
+          const player = new Audio(src);
+          playerRef.current = player;
+          void player.play().catch(() => {});
+        }
+      }
     } catch (err) {
       if (recorder.isMounted()) setPhase({ kind: 'error', message: micErrorMessage(err) });
     }
@@ -322,6 +367,35 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
         />
       ) : null}
 
+      {canRecord && (urls.original || urls.vocals) && (
+        <label className="inline-check small play-along">
+          <input
+            type="checkbox"
+            checked={playAlong}
+            disabled={recorder.recording}
+            onChange={(e) => {
+              setPlayAlong(e.target.checked);
+              savePlayAlong(e.target.checked);
+            }}
+          />
+          <span>
+            녹음할 때 원곡 같이 틀기 <span className="muted">이어폰을 꽂아 주세요. 스피커로 나오면 원곡 소리가 같이 녹음돼 채점이 틀어져요.</span>
+          </span>
+        </label>
+      )}
+
+      {/* Above the record button, so both fit on a phone screen while singing. */}
+      {(!outcome || recorder.recording) && (
+        <LiveGuide
+          lyrics={song.lyrics}
+          charTimes={guideTimes.times}
+          measured={guideTimes.measured}
+          reference={ref}
+          frameSeconds={song.frameSeconds}
+          seconds={recorder.recording ? recorder.elapsed : null}
+        />
+      )}
+
       {canRecord && (
         <RecordControls
           recording={recorder.recording}
@@ -340,14 +414,8 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
       {phase.kind === 'error' && <p className="error">{phase.message}</p>}
       {audioUrl && !recorder.recording && <audio className="playback" controls src={audioUrl} />}
 
-      {outcome && <SongOutcome attempt={outcome} reference={ref} frameSeconds={song.frameSeconds} />}
+      {outcome && !recorder.recording && <SongOutcome attempt={outcome} reference={ref} frameSeconds={song.frameSeconds} />}
 
-      {!outcome && (
-        <div className="result">
-          <h3>원곡 음정</h3>
-          <PitchChart reference={ref} frameSeconds={song.frameSeconds} />
-        </div>
-      )}
 
       {history.error && <p className="error">{history.error}</p>}
       <AttemptHistory

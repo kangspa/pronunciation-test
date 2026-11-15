@@ -60,6 +60,8 @@ Browsers evict an origin's storage all at once, so records go together with any 
 
 **Takes longer than 30 s**: a take sung more slowly than the original can run past one Whisper window, so audio is cut at the quietest 100 ms between 15 and 28 s into each piece (`src/audio/chunk.ts`). Transcription joins the pieces. For pronunciation scoring, each piece is free-decoded first; the target lyrics are then aligned to the concatenated heard text and split at the piece boundaries (`splitTargetByChunk`), and each part is teacher-forced on its own window. On a 60 s take this gave a probability for all 144 target characters and flagged exactly the two edited phrases.
 
+**Live guide while recording** (`src/components/LiveGuide.tsx`): above the record button, the line to sing now with the current character highlighted, the next line, and a playhead on the original's pitch chart, all running from the moment recording starts. Lyric timing comes from the word-timing model when the song has it for its lyrics (`Song.refCharTimes`); otherwise the characters are spread evenly over the stretches where the reference is voiced (`estimateCharTimes`), which is approximate but follows the song. "녹음할 때 원곡 같이 틀기" plays the original segment from the start of each recording, for use with earphones (through speakers it would leak into the take). The chart is memoised so only the playhead redraws during recording, and on a phone it fits the screen so the playhead never runs off it.
+
 Practice has three separate tests, each with its own best score:
 
 - **발음 평가 (pronunciation)**: the take is scored against the lyrics as above. Needs lyrics and a Whisper model.

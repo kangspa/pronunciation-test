@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { midiName } from '../audio/pitch';
 import { TIMING_OK_SECONDS } from '../audio/pitchCompare';
 
@@ -12,6 +13,11 @@ interface Props {
   // Horizontal scale for long tracks; the chart then scrolls sideways.
   pxPerSecond?: number;
 }
+
+type ChartProps = Props & {
+  // Live position (seconds on the reference timeline), drawn as a vertical line.
+  playheadSeconds?: number;
+};
 
 const MIN_W = 800;
 const H = 220;
@@ -37,12 +43,38 @@ function timingClass(err: number): TimingClass {
   return strong ? 'late-strong' : 'late';
 }
 
-export function PitchChart({ reference, frameSeconds, user, frameScores, timingErrors, pxPerSecond }: Props) {
+const chartWidth = (n: number, frameSeconds: number, pxPerSecond?: number) =>
+  pxPerSecond ? Math.max(MIN_W, Math.round(n * frameSeconds * pxPerSecond)) : MIN_W;
+
+// The chart itself is memoised: during recording only the playhead moves, and
+// redrawing every path 60 times a second would be wasted work.
+export function PitchChart({ playheadSeconds, ...props }: ChartProps) {
+  const { reference, frameSeconds, user, timingErrors, pxPerSecond } = props;
+  const n = reference.length;
+  const hasValues = reference.some((v) => !Number.isNaN(v)) || !!user?.some((v) => !Number.isNaN(v));
+  if (n === 0 || !hasValues) return <p className="muted small">표시할 음정이 없어요.</p>;
+  const W = chartWidth(n, frameSeconds, pxPerSecond);
+  const totalH = H + (timingErrors ? STRIP + 4 : 0);
+  const px = playheadSeconds === undefined ? null : PAD_L + Math.min(1, Math.max(0, playheadSeconds / frameSeconds / Math.max(1, n - 1))) * (W - PAD_L - 4);
+  return (
+    <div className="chart-scroll">
+      <div className="chart-stack" style={pxPerSecond ? { width: W } : undefined}>
+        <ChartSvg {...props} />
+        {px !== null && (
+          <svg className="chart-overlay" viewBox={`0 0 ${W} ${totalH}`} aria-hidden>
+            <line x1={px} x2={px} y1={2} y2={H - PAD_B} className="playhead" />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ChartSvg = memo(function ChartSvg({ reference, frameSeconds, user, frameScores, timingErrors, pxPerSecond }: Props) {
   const n = reference.length;
   const values: number[] = [];
   for (const v of reference) if (!Number.isNaN(v)) values.push(v);
   if (user) for (const v of user) if (!Number.isNaN(v)) values.push(v);
-  if (n === 0 || values.length === 0) return <p className="muted small">표시할 음정이 없어요.</p>;
 
   let lo = values[0];
   let hi = values[0];
@@ -58,7 +90,7 @@ export function PitchChart({ reference, frameSeconds, user, frameScores, timingE
     hi = Math.ceil(mid + 6);
   }
   const seconds = n * frameSeconds;
-  const W = pxPerSecond ? Math.max(MIN_W, Math.round(seconds * pxPerSecond)) : MIN_W;
+  const W = chartWidth(n, frameSeconds, pxPerSecond);
   const strip = timingErrors ? STRIP + 4 : 0;
   const totalH = H + strip;
   const plotBottom = H - PAD_B;
@@ -113,11 +145,9 @@ export function PitchChart({ reference, frameSeconds, user, frameScores, timingE
   const stripY = H - 2;
 
   return (
-    <div className="chart-scroll">
       <svg
         className={`pitch-chart ${pxPerSecond ? 'wide' : ''}`}
         viewBox={`0 0 ${W} ${totalH}`}
-        style={pxPerSecond ? { width: W } : undefined}
         role="img"
         aria-label={timingErrors ? '음정 그래프와 타이밍 표시' : '음정 그래프'}
       >
@@ -159,9 +189,8 @@ export function PitchChart({ reference, frameSeconds, user, frameScores, timingE
           </g>
         )}
       </svg>
-    </div>
   );
-}
+});
 
 export function TimingLegend() {
   return (
