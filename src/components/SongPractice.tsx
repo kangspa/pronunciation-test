@@ -11,11 +11,12 @@ import type { Attempt } from '../lib/attemptStore';
 import { compareCharTimes } from '../lib/charTiming';
 import { decodeTo16k, prepareSpeech } from '../lib/recorder';
 import { KEY_OPTIONS, keyLabel, keyToValue, songScores, timingDetail, timingFormula, valueToKey } from '../lib/songScores';
-import { analyze, grade } from '../lib/scoring';
+import { analyze } from '../lib/scoring';
 import type { Analysis } from '../lib/scoring';
 import { bestOf, getSong, putSong, withBest } from '../lib/songStore';
 import type { PracticeMode, Song } from '../lib/songStore';
 import { AttemptHistory } from './AttemptHistory';
+import { ScoreHeader } from './ScoreHeader';
 import { ModelGate } from './ModelGate';
 import { PitchChart, TimingLegend } from './PitchChart';
 import { RecordControls } from './RecordControls';
@@ -453,23 +454,6 @@ function SongOutcome({ attempt, reference, frameSeconds }: { attempt: Attempt; r
   );
 }
 
-function ScoreHeader({ score, caption, children }: { score: number; caption: string; children: React.ReactNode }) {
-  const g = grade(score);
-  return (
-    <div className="score-row">
-      <div className={`score-ring tone-${g.tone}`} style={{ '--p': score } as React.CSSProperties}>
-        <div className="score-ring-inner">
-          <strong>{score.toFixed(1)}</strong>
-          <span>{caption}</span>
-        </div>
-      </div>
-      <div className="score-summary">
-        <p className={`grade tone-${g.tone}`}>{g.label}</p>
-        <dl>{children}</dl>
-      </div>
-    </div>
-  );
-}
 
 function PitchResult({
   pitch,

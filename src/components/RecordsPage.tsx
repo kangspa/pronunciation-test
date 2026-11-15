@@ -43,6 +43,17 @@ function buildRows(attempts: Attempt[], songs: Song[]): Row[] {
         tags: [languageLabel(t.language), LEVEL_LABEL[t.level]],
         attempts: list,
       });
+    } else if (kind === 'f') {
+      const f = list[0].full;
+      if (!f) continue;
+      rows.push({
+        key: item,
+        kind: 'song',
+        title: f.title,
+        href: `#/full/${encodeURIComponent(list[0].id)}`,
+        tags: ['전곡', languageLabel(f.language)],
+        attempts: list,
+      });
     } else {
       const s = songs.find((x) => x.id === id);
       if (!s) continue;
@@ -163,14 +174,22 @@ export function RecordsPage() {
                     <span>
                       <b>{r.attempts.length}</b>회
                     </span>
-                    {r.kind === 'twister' ? (
+                    {r.kind === 'twister' || r.key.startsWith('f:') ? (
                       <>
                         <span>
-                          최고 <b className={`tone-text-${grade(best).tone}`}>{best.toFixed(0)}</b>
+                          {r.key.startsWith('f:') ? '점수' : '최고'} <b className={`tone-text-${grade(best).tone}`}>{best.toFixed(0)}</b>
                         </span>
-                        <span>
-                          최근 <b className={`tone-text-${grade(latest.score).tone}`}>{latest.score.toFixed(0)}</b>
-                        </span>
+                        {r.key.startsWith('f:') ? (
+                          latest.scoreWithTiming !== undefined && (
+                            <span>
+                              타이밍 포함 <b>{latest.scoreWithTiming.toFixed(0)}</b>
+                            </span>
+                          )
+                        ) : (
+                          <span>
+                            최근 <b className={`tone-text-${grade(latest.score).tone}`}>{latest.score.toFixed(0)}</b>
+                          </span>
+                        )}
                       </>
                     ) : (
                       // Bests come from the attempts themselves, so they always

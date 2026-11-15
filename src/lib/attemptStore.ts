@@ -1,5 +1,6 @@
 import type { PitchComparison } from '../audio/pitchCompare';
 import { ATTEMPTS, tx } from './db';
+import type { FullSongInfo } from './fullSong';
 import { isMismatch } from './scoring';
 import type { Analysis } from './scoring';
 import type { PracticeMode } from './songStore';
@@ -27,6 +28,8 @@ export interface Attempt {
   pitchForReference?: boolean;
   // Signed seconds per lyric character versus the original (word-timing model only).
   charTiming?: number[];
+  // Full-song tests (item `fullKey(id)`): everything else the result page needs.
+  full?: FullSongInfo;
 }
 
 // One line for a history row: what was heard and how many places differed.
@@ -39,6 +42,8 @@ export function pronunciationSummary(analysis: Analysis | undefined): string {
 
 export const twisterKey = (id: string) => `t:${id}`;
 export const songKey = (id: string) => `s:${id}`;
+// Each full-song test is its own item, keyed by its attempt id.
+export const fullKey = (id: string) => `f:${id}`;
 
 export function newAttemptId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -54,6 +59,10 @@ export async function listAttempts(item: string): Promise<Attempt[]> {
     t.objectStore(ATTEMPTS).index('item').getAll(item) as IDBRequest<Attempt[]>,
   );
   return all.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function getAttempt(id: string): Promise<Attempt | undefined> {
+  return tx<Attempt | undefined>(ATTEMPTS, 'readonly', (t) => t.objectStore(ATTEMPTS).get(id) as IDBRequest<Attempt | undefined>);
 }
 
 export async function listAllAttempts(): Promise<Attempt[]> {

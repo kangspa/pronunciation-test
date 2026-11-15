@@ -1790,3 +1790,144 @@
 .tile.timing-late-strong {
   --timing-color: var(--late);
 }
+
+/* Full-song test */
+.form-grid {
+  display: grid;
+  gap: 14px;
+}
+.form-grid h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.field {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+.field input:not([type='file']),
+.field select {
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  min-width: 0;
+}
+.file-pick {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.file-pick-label {
+  font-weight: 700;
+}
+.file-pick input,
+.field input[type='file'] {
+  max-width: 100%;
+  font-size: 0.85rem;
+}
+.inline-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.inline-check input {
+  margin-top: 4px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+}
+.pre {
+  white-space: pre-wrap;
+}
+
+/* Lyrics report: one row per lyric line. */
+.lyric-lines {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+}
+.lyric-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.line-score {
+  flex: none;
+  width: 2.2em;
+  text-align: right;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+.line-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 2.1;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.line-time {
+  flex: none;
+}
+.lc {
+  border: 0;
+  background: none;
+  padding: 0 1px;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.lc.tone-good {
+  color: var(--good);
+}
+.lc.tone-ok {
+  color: var(--ok);
+}
+.lc.tone-low {
+  color: var(--low);
+}
+.lc.miss {
+  background: var(--low-soft);
+  color: var(--low);
+  font-weight: 700;
+}
+.lc rt {
+  font-size: 0.6em;
+  font-weight: 700;
+  color: var(--low);
+}
+.lc.selected {
+  outline: 2px solid var(--accent);
+}
+.lc[class*='timing-'] {
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--timing-color);
+}
+.lc.timing-early {
+  --timing-color: color-mix(in srgb, var(--low) 50%, transparent);
+}
+.lc.timing-early-strong {
+  --timing-color: var(--low);
+}
+.lc.timing-late {
+  --timing-color: color-mix(in srgb, var(--late) 50%, transparent);
+}
+.lc.timing-late-strong {
+  --timing-color: var(--late);
+}

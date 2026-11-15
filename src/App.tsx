@@ -4,6 +4,8 @@ import { asrClient } from './asr/asrClient';
 import { findPreset } from './asr/models';
 import { inspectCache, requestPersistence } from './asr/modelStore';
 import { useModelState } from './asr/useModelState';
+import { FullSongResultPage } from './components/FullSongResult';
+import { FullSongTest } from './components/FullSongTest';
 import { LocalPage } from './components/LocalPage';
 import { ModelStatusPill } from './components/ModelStatusPill';
 import { RecordsPage } from './components/RecordsPage';
@@ -23,6 +25,8 @@ type Route =
   | { page: 'local' }
   | { page: 'songs' }
   | { page: 'song-new' }
+  | { page: 'song-full' }
+  | { page: 'full'; id: string }
   | { page: 'song'; id: string };
 
 function parseHash(): Route {
@@ -30,7 +34,8 @@ function parseHash(): Route {
   const [page, id] = hash.split('/');
   if (page === 't' && id) return { page: 'twister', id: decodeURIComponent(id) };
   if (page === 's' && id) return { page: 'song', id: decodeURIComponent(id) };
-  if (page === 'songs') return id === 'new' ? { page: 'song-new' } : { page: 'songs' };
+  if (page === 'songs') return id === 'new' ? { page: 'song-new' } : id === 'full' ? { page: 'song-full' } : { page: 'songs' };
+  if (page === 'full' && id) return { page: 'full', id: decodeURIComponent(id) };
   if (page === 'records') return { page: 'records' };
   // '#/models' is the old address of the model page, now part of 로컬 관리.
   if (page === 'local' || page === 'models') return { page: 'local' };
@@ -106,7 +111,7 @@ function App() {
           <a href="#/songs" className={route.page.startsWith('song') ? 'active' : ''}>
             노래
           </a>
-          <a href="#/records" className={route.page === 'records' ? 'active' : ''}>
+          <a href="#/records" className={route.page === 'records' || route.page === 'full' ? 'active' : ''}>
             기록
           </a>
           <a href="#/local" className={route.page === 'local' ? 'active' : ''}>
@@ -127,6 +132,15 @@ function App() {
           />
         )}
         {route.page === 'records' && <RecordsPage />}
+        {route.page === 'song-full' && (
+          <FullSongTest
+            modelState={modelState}
+            selectedModelId={settings.modelId}
+            saveModels={settings.saveModels}
+            onLoadModel={loadModel}
+          />
+        )}
+        {route.page === 'full' && <FullSongResultPage key={route.id} id={route.id} />}
         {route.page === 'home' && <TwisterList best={best} modelState={modelState} />}
         {route.page === 'songs' && <SongList />}
         {route.page === 'song-new' && <SongEditor modelState={modelState} saveModels={settings.saveModels} />}

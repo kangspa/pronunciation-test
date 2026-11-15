@@ -4,7 +4,8 @@ import type { Processor } from '@huggingface/transformers';
 import { pitchRunner, stemRunner } from '../audio/audioSessions';
 import { PITCH_RATE, trackPitch } from '../audio/pitch';
 import { resample } from '../audio/resample';
-import { SEPARATION_RATE, separateVocals } from '../audio/separation';
+import { piecewisePitchRunner, separateLong } from '../audio/longAudio';
+import { SEPARATION_RATE } from '../audio/separation';
 import { WhisperScorer } from './whisperScorer';
 import type { FileProgress, WorkerRequest, WorkerResponse } from './protocol';
 
@@ -118,7 +119,10 @@ async function separate(req: RequestOf<'separate'>) {
   const vocalsModel = await stemRunner('vocals', req.useCache, onProgress);
   const accModel = await stemRunner('accompaniment', req.useCache, onProgress);
   onProgress('보컬 분리 중', 0, 1);
-  const vocals44k = await separateVocals(req.left, req.right, vocalsModel, accModel);
+  // Long audio (whole songs) is separated in 30 s pieces.
+  const vocals44k = await separateLong(req.left, req.right, SEPARATION_RATE, vocalsModel, accModel, (k, n) =>
+    onProgress(n > 1 ? `보컬 분리 중 (${k + 1}/${n})` : '보컬 분리 중', k, n),
+  );
   const vocals16k = resample(vocals44k, SEPARATION_RATE, PITCH_RATE);
   self.postMessage({ type: 'separate-result', requestId: req.requestId, result: { vocals44k, vocals16k } } satisfies WorkerResponse, [
     vocals44k.buffer,
@@ -127,7 +131,10 @@ async function separate(req: RequestOf<'separate'>) {
 }
 
 async function pitch(req: RequestOf<'pitch'>) {
-  const run = await pitchRunner(req.useCache, progressFor(req.requestId));
+  const onProgress = progressFor(req.requestId);
+  const run = piecewisePitchRunner(await pitchRunner(req.useCache, onProgress), (k, n) =>
+    onProgress(n > 1 ? `음정 추출 중 (${k + 1}/${n})` : '음정 추출 중', k, n),
+  );
   const track = await trackPitch(req.audio, run, { gateDb: req.gateDb });
   self.postMessage(
     { type: 'pitch-result', requestId: req.requestId, result: { midi: track.midi, frameSeconds: track.frameSeconds } } satisfies WorkerResponse,

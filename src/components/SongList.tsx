@@ -46,9 +46,18 @@ export function SongList() {
         <p>
           노래 파일에서 구간을 골라 저장해 두면, 따라 부른 녹음의 발음(가사)과 음정을 원곡 보컬과 비교해 점수를 알려줘요.
         </p>
-        <a className="button button-primary" href="#/songs/new">
-          + 노래 추가
-        </a>
+        <div className="actions">
+          <a className="button button-primary" href="#/songs/new">
+            + 30초 구간 연습 추가
+          </a>
+          <a className="button" href="#/songs/full">
+            전곡 채점
+          </a>
+        </div>
+        <p className="muted small">
+          전곡 채점은 원곡 파일과 내가 부른 파일(MR 반주 녹음도 가능)을 올려 곡 전체를 원곡 기준으로 채점해요. 결과는 기록 탭에
+          남아요.
+        </p>
       </div>
       {error && <p className="error">{error}</p>}
       {songs && songs.length === 0 && <p className="muted">아직 저장된 노래가 없어요.</p>}
