@@ -49,11 +49,12 @@ const SMOOTHING = 0.1;
 // The take's character scores measured against the original singer's on the
 // same lyrics: (take + 0.1) / (original + 0.1), capped at 1. A character
 // heard at least as clearly as in the original scores 1, so singing exactly
-// like the original gives 100. Extra sounds in the take count as zero slots,
-// as in the absolute score.
+// like the original gives 100. Extra sounds count as zero slots, as in the
+// absolute score, but only those beyond the original's own: Whisper hears
+// the same extra syllables in both when the take matches the original.
 export function relativePronunciation(take: Analysis, ref: Analysis): { overall: number; chars: number[] } {
   const chars = take.chars.map((c, i) => Math.min(1, (c.score + SMOOTHING) / ((ref.chars[i]?.score ?? 1) + SMOOTHING)));
-  const n = chars.length + take.insertions.length;
+  const n = chars.length + Math.max(0, take.insertions.length - ref.insertions.length);
   return { overall: n ? (chars.reduce((a, b) => a + b, 0) / n) * 100 : 0, chars };
 }
 
