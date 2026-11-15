@@ -1931,3 +1931,12 @@
 .lc.timing-late-strong {
   --timing-color: var(--late);
 }
+
+/* Long button labels (e.g. "Whisper Base + 단어 타이밍 불러오기 (약 80MB)") wrap
+   instead of widening the page past a phone screen. */
+.gate-actions .button,
+.actions .button {
+  white-space: normal;
+  max-width: 100%;
+  text-align: center;
+}
