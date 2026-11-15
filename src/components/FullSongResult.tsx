@@ -8,8 +8,8 @@ import type { FullSongInfo } from '../lib/fullSong';
 import { isContentChar } from '../lib/hangul';
 import { isMismatch } from '../lib/scoring';
 import type { Analysis } from '../lib/scoring';
-import { keyLabel, timingDetail } from '../lib/songScores';
-import { PitchChart, TimingLegend } from './PitchChart';
+import { timingDetail } from '../lib/songScores';
+import { PitchResult } from './PitchResult';
 import { ScoreHeader } from './ScoreHeader';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -146,8 +146,14 @@ export function FullSongResult({ attempt }: { attempt: Attempt }) {
           )}
           {pitch && (
             <div>
-              <dt>음정</dt>
+              <dt>음정 (절대)</dt>
               <dd>{pitch.score.toFixed(1)}</dd>
+            </div>
+          )}
+          {pitch?.relative && (
+            <div>
+              <dt>음정 (상대)</dt>
+              <dd>{pitch.relative.score.toFixed(1)}</dd>
             </div>
           )}
           {timing !== undefined && (
@@ -174,29 +180,7 @@ export function FullSongResult({ attempt }: { attempt: Attempt }) {
 
       {pronunciation && <LyricsReport lyrics={attempt.target} take={pronunciation} full={full} charTiming={attempt.charTiming} />}
 
-      {pitch && (
-        <div className="result">
-          <h3>음정 · 박자</h3>
-          <p className="muted small">
-            음정 {pitch.score.toFixed(1)}점 · 50센트 이내 {pitch.hitRate.toFixed(0)}% · 평균 음정 오차 {pitch.meanCents > 0 ? '+' : ''}
-            {pitch.meanCents.toFixed(0)}센트 · {keyLabel(pitch)}
-            {pitch.octaveShift !== 0 && ` · ${Math.abs(pitch.octaveShift)}옥타브 차이는 맞춰서 비교`}
-          </p>
-          <PitchChart
-            reference={full.refMidi}
-            frameSeconds={full.frameSeconds}
-            user={pitch.alignedUser}
-            frameScores={pitch.frameScores}
-            timingErrors={pitch.timingErrors}
-            pxPerSecond={16}
-          />
-          <p className="legend small">
-            <span className="swatch ref" /> 원곡 보컬 <span className="swatch great" /> 정확 <span className="swatch ok" /> 조금 벗어남{' '}
-            <span className="swatch low" /> 많이 벗어남 · 옆으로 밀어서 곡 전체를 볼 수 있어요
-          </p>
-          {pitch.timingErrors && <TimingLegend />}
-        </div>
-      )}
+      {pitch && <PitchResult pitch={pitch} reference={full.refMidi} frameSeconds={full.frameSeconds} pxPerSecond={16} />}
 
       {(full.recognizedLyrics || full.lyricsSource !== 'none') && (
         <details className="explain">

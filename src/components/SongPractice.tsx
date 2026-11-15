@@ -10,7 +10,7 @@ import { newAttemptId, pronunciationSummary, songKey } from '../lib/attemptStore
 import type { Attempt } from '../lib/attemptStore';
 import { compareCharTimes } from '../lib/charTiming';
 import { decodeTo16k, prepareSpeech } from '../lib/recorder';
-import { KEY_OPTIONS, keyLabel, keyToValue, songScores, timingDetail, timingFormula, valueToKey } from '../lib/songScores';
+import { KEY_OPTIONS, keyToValue, songScores, timingDetail, timingFormula, valueToKey } from '../lib/songScores';
 import { analyze } from '../lib/scoring';
 import type { Analysis } from '../lib/scoring';
 import { bestOf, getSong, putSong, withBest } from '../lib/songStore';
@@ -18,7 +18,8 @@ import type { PracticeMode, Song } from '../lib/songStore';
 import { AttemptHistory } from './AttemptHistory';
 import { ScoreHeader } from './ScoreHeader';
 import { ModelGate } from './ModelGate';
-import { PitchChart, TimingLegend } from './PitchChart';
+import { PitchChart } from './PitchChart';
+import { PitchResult } from './PitchResult';
 import { RecordControls } from './RecordControls';
 import { ResultView } from './ResultView';
 
@@ -304,9 +305,9 @@ export function SongPractice({ songId, modelState, selectedModelId, saveModels, 
           </select>
         </label>
         <p className="muted small">
-          노래방처럼 키를 바꿔 부른다면 맞춰 주세요. 소리를 바꾸지는 않고, 채점할 때만 그만큼 옮겨서 비교해요.
-          상대 음정은 키와 상관없이 음의 높낮이 변화만 채점해요. 남녀 차이 같은 한 옥타브 차이는 어느 설정이든
-          자동으로 맞춰요.
+          노래방처럼 키를 바꿔 부른다면 맞춰 주세요. 소리를 바꾸지는 않고, 절대 음정을 채점할 때만 그만큼 옮겨서
+          비교해요. 키와 상관없이 높낮이 변화만 보는 상대 음정도 항상 함께 채점해요. 남녀 차이 같은 한 옥타브
+          차이는 자동으로 맞춰요.
         </p>
       </div>
 
@@ -366,7 +367,7 @@ function songSummary(a: Attempt): string {
   if (a.scoreWithTiming !== undefined) parts.push(`타이밍 포함 ${a.scoreWithTiming.toFixed(0)}점`);
   if (a.mode === 'pronunciation') return [...parts, pronunciationSummary(a.pronunciation)].join(' · ');
   if (a.pronunciation) parts.push(`발음 ${a.pronunciation.overall.toFixed(0)}`);
-  if (a.pitch) parts.push(`음정 ${a.pitch.score.toFixed(0)}`);
+  if (a.pitch) parts.push(`음정 ${a.pitch.score.toFixed(0)}${a.pitch.relative ? `(상대 ${a.pitch.relative.score.toFixed(0)})` : ''}`);
   if (a.pitch?.timingScore !== undefined) parts.push(`타이밍 ${a.pitch.timingScore.toFixed(0)}`);
   return parts.join(' · ');
 }
@@ -404,8 +405,14 @@ function SongOutcome({ attempt, reference, frameSeconds }: { attempt: Attempt; r
           )}
           {pitch && !attempt.pitchForReference && (
             <div>
-              <dt>음정</dt>
+              <dt>음정 (절대)</dt>
               <dd>{pitch.score.toFixed(1)}</dd>
+            </div>
+          )}
+          {pitch?.relative && !attempt.pitchForReference && (
+            <div>
+              <dt>음정 (상대)</dt>
+              <dd>{pitch.relative.score.toFixed(1)}</dd>
             </div>
           )}
           {timing !== undefined && (
@@ -451,64 +458,5 @@ function SongOutcome({ attempt, reference, frameSeconds }: { attempt: Attempt; r
       )}
       {attempt.pitchForReference && pitchView}
     </>
-  );
-}
-
-
-function PitchResult({
-  pitch,
-  reference,
-  frameSeconds,
-  forReference,
-}: {
-  pitch: PitchComparison;
-  reference: Float32Array;
-  frameSeconds: number;
-  // Measured alongside the pronunciation test; not part of its score.
-  forReference: boolean;
-}) {
-  const shifted = Math.abs(pitch.keyShift ?? 0) >= 0.25;
-  return (
-    <div className="result">
-      <h3>음정 비교{forReference && ' (참고용 · 발음 평가 점수에는 반영 안 됨)'}</h3>
-      <p className="muted small">
-        {!forReference && `음정 ${pitch.score.toFixed(1)}점 · `}50센트 이내 {pitch.hitRate.toFixed(0)}% · 평균 음정 오차{' '}
-        {pitch.meanCents > 0 ? '+' : ''}
-        {pitch.meanCents.toFixed(0)}센트 · {keyLabel(pitch)}
-      </p>
-      <p className="muted small">
-        {Math.abs(pitch.meanCents) >= 30 && (pitch.meanCents > 0 ? '전체적으로 조금 높게 불렀어요. ' : '전체적으로 조금 낮게 불렀어요. ')}
-        {pitch.octaveShift !== 0 &&
-          `원곡보다 ${Math.abs(pitch.octaveShift)}옥타브 ${pitch.octaveShift > 0 ? '낮게' : '높게'} 불러서 옥타브를 맞춰 비교했어요.`}
-      </p>
-      <PitchChart
-        reference={reference}
-        frameSeconds={frameSeconds}
-        user={pitch.alignedUser}
-        frameScores={pitch.frameScores}
-        timingErrors={pitch.timingErrors}
-      />
-      <p className="legend small">
-        <span className="swatch ref" /> 원곡 보컬 <span className="swatch great" /> 정확 <span className="swatch ok" /> 조금 벗어남{' '}
-        <span className="swatch low" /> 많이 벗어남
-        {(shifted || pitch.octaveShift !== 0) && ' · 내 음정은 키·옥타브 차이만큼 옮겨서 겹쳐 그렸어요'}
-      </p>
-      {pitch.timingErrors && <TimingLegend />}
-      <details className="explain">
-        <summary>음정 점수는 어떻게 계산되나요?</summary>
-        <ul>
-          <li>원곡 보컬과 녹음에서 16ms마다 음 높이를 추출해 반음 단위로 비교해요.</li>
-          <li>박자가 조금 빠르거나 느려도 따라가도록 시간축을 맞춘 뒤(DTW) 비교하고, 옥타브 차이는 자동으로 맞춰요.</li>
-          <li>
-            채점 키를 바꾸면 내 음정을 그만큼 옮겨서 비교해요. 상대 음정은 가장 잘 맞는 키를 찾아(반음보다 작은 차이까지)
-            옮긴 뒤 비교하므로, 음의 높낮이 변화만 맞으면 높은 점수가 나와요.
-          </li>
-          <li>
-            원곡이 소리 내는 구간마다 반음의 절반(50센트) 이내면 만점, 2반음 이상 벗어나면 0점이에요. 그 구간에 소리를 내지
-            않았어도 0점이에요.
-          </li>
-        </ul>
-      </details>
-    </div>
   );
 }

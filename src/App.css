@@ -1940,3 +1940,31 @@
   max-width: 100%;
   text-align: center;
 }
+
+/* Two pitch scores (absolute / relative) side by side. */
+.pitch-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 8px 0;
+}
+.pitch-pair > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.pitch-pair > div.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pitch-pair strong {
+  font-size: 1.4rem;
+}
+.pitch-pair-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}

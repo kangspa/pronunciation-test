@@ -7,9 +7,23 @@ export type KeySetting =
   | { kind: 'original' }
   // Sung `semitones` higher (+) or lower (-) than the original, like a karaoke key change.
   | { kind: 'shift'; semitones: number }
-  // Any key: the best-fitting constant shift is found, so only the melody's
-  // rises and falls (relative pitch) are scored.
+  // Saved by older versions, when relative pitch was a setting instead of
+  // always being scored alongside; treated as the original key.
   | { kind: 'relative' };
+
+// Relative pitch: the same comparison after the best-fitting constant shift
+// (any key, down to fractions of a semitone), so only the melody's rises and
+// falls are scored. Always computed next to the absolute result.
+export interface RelativePitch {
+  score: number;
+  hitRate: number;
+  meanCents: number;
+  // Semitones the take was sung above (+) or below (-) the original, beyond whole octaves.
+  keyShift: number;
+  octaveShift: number;
+  alignedUser: Float32Array;
+  frameScores: Float32Array;
+}
 
 export interface PitchComparison {
   // 0..100. 100 = every voiced reference frame matched within PERFECT_SEMITONES.
@@ -44,6 +58,7 @@ export interface PitchComparison {
   // Per reference frame, how much later (+) or earlier (-) the take sings it,
   // seconds; NaN where the reference is unvoiced or the user was silent.
   timingErrors?: Float32Array;
+  relative?: RelativePitch;
 }
 
 // Within this many semitones a frame counts as fully in tune; at FAIL_SEMITONES it scores 0.
@@ -72,34 +87,87 @@ const TIMING_FAIL_SECONDS = 0.6;
 // The take's timing is lined up on the first this-many seconds of singing.
 const ANCHOR_SECONDS = 3;
 
+// Absolute pitch in the chosen key, plus relative pitch and timing, which are
+// both measured in the best-fitting key.
 export function comparePitch(ref: PitchTrack, user: PitchTrack, key: KeySetting = { kind: 'original' }): PitchComparison {
-  const fit = bestKeyFit(ref, user);
-  const chosen = key.kind === 'relative' ? fit : compareAt(ref, user, key.kind === 'shift' ? key.semitones : 0);
+  // Where the take's singing starts relative to the original, found once from
+  // the voicing pattern alone, so it holds for every key tried below.
+  const coarse = coarseOffset(ref.midi, user.midi, ref.frameSeconds);
+  const fit = bestKeyFit(ref, user, coarse);
+  const absKey: KeySetting = key.kind === 'shift' ? key : { kind: 'original' };
+  const absolute = compareAt(ref, user, absKey.kind === 'shift' ? absKey.semitones : 0, coarse);
   return {
-    ...chosen,
-    key,
+    ...absolute,
+    key: absKey,
     timingScore: fit.timingScore,
     timingErrorSeconds: fit.timingErrorSeconds,
     tempoRatio: fit.tempoRatio,
     timingErrors: fit.timingErrors,
+    relative: {
+      score: fit.score,
+      hitRate: fit.hitRate,
+      meanCents: fit.meanCents,
+      keyShift: fit.keyShift ?? 0,
+      octaveShift: fit.octaveShift,
+      alignedUser: fit.alignedUser,
+      frameScores: fit.frameScores,
+    },
   };
 }
 
-// Relative pitch: try every key within an octave (octaves are searched
-// inside), then refine by the median remaining offset, which also absorbs a
-// take that is consistently a little sharp or flat.
-function bestKeyFit(ref: PitchTrack, user: PitchTrack): PitchComparison {
+// Try every key within an octave (octaves are searched inside), then refine
+// by the median remaining offset, which also absorbs a take that is
+// consistently a little sharp or flat.
+function bestKeyFit(ref: PitchTrack, user: PitchTrack, coarse: number): PitchComparison {
   let best: PitchComparison | null = null;
   for (let s = -5; s <= 6; s++) {
-    const c = compareAt(ref, user, s);
+    const c = compareAt(ref, user, s, coarse);
     if (!best || c.score > best.score) best = c;
   }
   const residual = medianOffset(ref.midi, best!.alignedUser);
   if (Math.abs(residual) > 0.05) {
-    const refined = compareAt(ref, user, best!.keyShift! + residual);
+    const refined = compareAt(ref, user, best!.keyShift! + residual, coarse);
     if (refined.score > best!.score) best = refined;
   }
   return best!;
+}
+
+const COARSE_BIN_SECONDS = 0.1;
+
+// Start offset (take frame - reference frame) from where the two sing,
+// ignoring pitch: both tracks become 0.1 s bins of "share voiced", and every
+// shift is scored by how much singing overlaps, minus what doesn't. Unlike
+// lining up the first voiced frames, a breath, count-in or noise before the
+// take's singing can't throw it off, and offsets of any size are found.
+function coarseOffset(r: Float32Array, u: Float32Array, fs: number): number {
+  const size = Math.max(1, Math.round(COARSE_BIN_SECONDS / fs));
+  const bins = (x: Float32Array) => {
+    const out = new Float32Array(Math.ceil(x.length / size));
+    for (let i = 0; i < x.length; i++) if (voiced(x[i])) out[Math.floor(i / size)] += 1 / size;
+    return out;
+  };
+  const rb = bins(r);
+  const ub = bins(u);
+  let best = 0;
+  let bestScore = -Infinity;
+  for (let lag = -rb.length + 1; lag < ub.length; lag++) {
+    let s = 0;
+    for (let b = 0; b < rb.length; b++) {
+      const j = b + lag;
+      const rv = rb[b];
+      if (j < 0 || j >= ub.length) {
+        s -= 0.5 * rv;
+        continue;
+      }
+      const uv = ub[j];
+      s += Math.min(rv, uv) - 0.5 * Math.abs(rv - uv);
+    }
+    if (s > bestScore) {
+      bestScore = s;
+      best = lag;
+    }
+  }
+  return best * size;
 }
 
 function medianOffset(r: Float32Array, aligned: Float32Array): number {
@@ -111,11 +179,12 @@ function medianOffset(r: Float32Array, aligned: Float32Array): number {
 }
 
 // Compares with the user's pitch lowered by `shift` semitones first.
-function compareAt(ref: PitchTrack, user: PitchTrack, shift: number): PitchComparison {
+// `coarse` is a start offset estimate (frames) from coarseOffset.
+function compareAt(ref: PitchTrack, user: PitchTrack, shift: number, coarse: number): PitchComparison {
   const r = ref.midi;
   const u = shift ? user.midi.map((x) => x - shift) : user.midi;
   const fs = ref.frameSeconds;
-  const { lag, octave } = findOffset(r, u, Math.round(MAX_LAG_SECONDS / fs));
+  const { lag, octave } = findOffset(r, u, Math.round(MAX_LAG_SECONDS / fs), coarse);
   const shifted = u.map((x) => x + 12 * octave);
 
   // Centre the band on the line through both tracks' first and last voiced
@@ -223,15 +292,18 @@ function compareAt(ref: PitchTrack, user: PitchTrack, shift: number): PitchCompa
   };
 }
 
-// Coarse search for the start offset and octave that best overlay the user on the reference.
-// Centred on where each track's singing starts, so an instrumental intro in
-// the reference segment (or a pause before the user starts) can exceed maxLag.
-function findOffset(r: Float32Array, u: Float32Array, maxLag: number): { lag: number; octave: number } {
+// Fine search for the start offset and octave that best overlay the user on
+// the reference, within maxLag of two estimates: where each track's singing
+// starts, and the voicing-pattern offset (coarse). Either can be off on its
+// own (a breath before the take, a repeated chorus); the pitch cost decides.
+function findOffset(r: Float32Array, u: Float32Array, maxLag: number, coarse: number): { lag: number; octave: number } {
   let refVoiced = 0;
   for (const x of r) if (voiced(x)) refVoiced++;
-  const base = Math.max(0, u.findIndex(voiced)) - Math.max(0, r.findIndex(voiced));
-  let best = { lag: base, octave: 0, cost: Infinity };
-  for (let lag = base - maxLag; lag <= base + maxLag; lag++) {
+  const firstVoiced = Math.max(0, u.findIndex(voiced)) - Math.max(0, r.findIndex(voiced));
+  const lags = new Set<number>();
+  for (const base of [firstVoiced, coarse]) for (let lag = base - maxLag; lag <= base + maxLag; lag++) lags.add(lag);
+  let best = { lag: coarse, octave: 0, cost: Infinity };
+  for (const lag of lags) {
     for (let octave = -2; octave <= 2; octave++) {
       let cost = 0;
       let n = 0;
